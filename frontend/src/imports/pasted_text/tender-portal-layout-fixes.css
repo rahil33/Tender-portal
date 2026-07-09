@@ -1,0 +1,329 @@
+Fix layout overpaging and spacing issues for a corporate tender portal website with 13 pages. Current problem: "Get Started Today" section has overlapping elements, inconsistent padding, and content bleeding outside containers.
+
+Global Fixes Required (All Pages):
+1. Page Container Structure:
+
+Max-width: 1280px for desktop, centered with margin: 0 auto
+
+Horizontal padding: 24px on desktop, 16px on tablet, 12px on mobile
+
+Vertical spacing between sections: 80px (desktop), 48px (tablet), 32px (mobile)
+
+All content must stay within viewport boundaries (no horizontal scroll)
+
+2. Grid System:
+
+Use 12-column grid for desktop
+
+Gutter width: 24px
+
+Column gaps: consistent across all pages
+
+3. Typography Scale (No Overflow):
+
+Headings: Wrap text, never overflow containers
+
+Max line length: 75 characters for body text
+
+All text must have proper line-height (1.5 for body, 1.2 for headings)
+
+4. Component Spacing Standards:
+
+Cards: 20px internal padding, 16px gap between cards
+
+Forms: 16px between fields, labels top-aligned
+
+Buttons: Minimum height 44px for touch targets
+
+Images: Max-width 100%, height auto
+
+Specific Fix for "Get Started Today" Section:
+Layout:
+
+Background: Deep navy blue (#0A2540) with subtle gradient
+
+Container padding: 48px top/bottom, 32px left/right
+
+Use 3-column grid on desktop, 2 columns on tablet, 1 column on mobile
+
+Column 1 - Pricing Box:
+
+White card with border-radius: 16px
+
+Internal padding: 32px
+
+Price text: "₹8,000 - ₹20,000" in gold (#FFB347), bold, 36px
+
+"per month" text: 16px, light gray
+
+Timeline label: Small badge above price
+
+Column 2 - CTA Box:
+
+Centered content vertically
+
+"10+ years experience" with checkmark icon
+
+"Get a Quote" button: Gold background, navy text, padding: 12px 32px
+
+Button hover state: Darker gold (#e69a2e)
+
+Column 3 - Compliance Box:
+
+Centered content vertically
+
+"100% Compliance" with shield icon
+
+Subtext: "All government regulations" in smaller font
+
+Responsive Behavior:
+
+Desktop: 3 columns side by side
+
+Tablet (768px-1024px): Columns 1 and 2 first row, column 3 second row
+
+Mobile (<768px): Single column, stacked vertically
+
+No horizontal overflow on any breakpoint
+
+Spacing Fixes:
+
+Remove all negative margins
+
+Ensure 24px gap between columns
+
+Bottom margin of section: 80px
+
+All elements have clear bounding boxes visible in inspect mode
+
+Page-by-Page Checklist to Verify:
+Homepage: Hero section full width, no overflow
+
+GeM Consultant: Service cards equal height, no text cutoff
+
+Tenders: Table responsive with horizontal scroll only on small screens
+
+Services: Icon + text alignment perfect
+
+About: Team photos cropped consistently
+
+Resources: Blog cards same height
+
+Contact: Form + map side by side, stack on mobile
+
+FAQ: Accordion items full width, no clipping
+
+Privacy/Terms: Long text properly wrapped
+
+Header: Navigation wraps on mobile (hamburger menu)
+
+Footer: Links stack on mobile, no overflow
+
+3D Carousel: Component centered, responsive to container width
+
+Design Tokens to Use:
+
+Primary color: #0A2540 (Navy)
+
+Secondary color: #FFB347 (Gold)
+
+Text color: #FFFFFF (White), #E2E8F0 (Light gray)
+
+Border radius: 12px (cards), 8px (buttons), 4px (inputs)
+
+Shadows: Subtle elevation with 0 10px 25px -5px rgba(0,0,0,0.1)
+
+Output format: Provide a responsive Figma frame for desktop (1440px), tablet (768px), and mobile (375px) with auto-layout applied to all containers. Show red outlines to verify no overflow.
+
+🛠️ Quick CSS Fix for Current Implementation
+If you need to fix the overpaging issue immediately, add this global CSS to your globals.css:
+
+css
+/* Fix for all pages - prevent overpaging */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+  position: relative;
+}
+
+/* Main container fix */
+.container {
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+/* Fix for Get Started Section */
+.get-started-section {
+  background: linear-gradient(135deg, #0A2540 0%, #0d2f4f 100%);
+  padding: 48px 0;
+  margin: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.get-started-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Pricing Card */
+.pricing-card {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+}
+
+.price {
+  color: #FFB347;
+  font-size: 36px;
+  font-weight: bold;
+  margin: 16px 0;
+}
+
+/* CTA Card */
+.cta-card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-gold {
+  background: #FFB347;
+  color: #0A2540;
+  padding: 12px 32px;
+  border-radius: 8px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 16px;
+  transition: all 0.3s ease;
+}
+
+.btn-gold:hover {
+  background: #e69a2e;
+  transform: translateY(-2px);
+}
+
+/* Compliance Card */
+.compliance-card {
+  background: rgba(255,255,255,0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Responsive Fixes */
+@media (max-width: 1024px) {
+  .get-started-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .compliance-card {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  
+  .get-started-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 0 16px;
+  }
+  
+  .compliance-card {
+    grid-column: span 1;
+  }
+  
+  .pricing-card, 
+  .cta-card, 
+  .compliance-card {
+    padding: 24px;
+  }
+  
+  .price {
+    font-size: 28px;
+  }
+}
+
+/* Ensure no horizontal scroll on any element */
+img, video, iframe, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Fix table overflow on tenders page */
+.tenders-table-wrapper {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.tenders-table {
+  min-width: 600px;
+}
+
+/* Fix form inputs */
+input, textarea, select {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+📱 Responsive Testing Checklist
+After applying the Figma design or CSS fixes, test these breakpoints:
+
+Device	Width	Expected Behavior
+Desktop	1440px	All 3 columns visible, no overflow
+Laptop	1024px	All content fits, proper spacing
+Tablet	768px	2 columns + stacked third
+Mobile	375px	1 column, readable text, touch-friendly buttons
+Mobile	320px	No horizontal scroll, text doesn't clip
+🔍 How to Identify Overpaging Issues in Figma
+Before/after check:
+
+❌ Problems to spot:
+
+Red outlines extending beyond frame boundaries
+
+Text getting cut off at edges
+
+Images wider than their containers
+
+Negative margins pushing content out
+
+Fixed widths causing breakage at smaller sizes
+
+✅ Fixes applied:
+
+All frames use "Auto Layout"
+
+Constraints set to "Left & Right" or "Scale"
+
+Max-width on parent containers
+
+Overflow set to "Visible" or "Hidden" appropriately
+
+Responsive variants for tablet/mobile
+
+Would you like me to provide the complete corrected code for the Get Started Today section that integrates with your existing multi-page structure, or help you implement these fixes across specific pages like the Tenders listing or Services page?
