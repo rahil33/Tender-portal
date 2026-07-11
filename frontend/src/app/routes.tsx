@@ -19,6 +19,7 @@ import ReviewsPage from "./pages/ReviewsPage";
 import SellerPage from "./pages/SellerPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import TenderUploadPage from "./pages/TenderUploadPage";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 export const router = createBrowserRouter([
   {
@@ -41,8 +42,22 @@ export const router = createBrowserRouter([
       { path: "privacy", Component: PrivacyPage },
       { path: "terms", Component: TermsPage },
       { path: "seller", Component: SellerPage },
-      { path: "seller/dashboard", Component: SellerDashboardPage },
-      { path: "seller/upload", Component: TenderUploadPage },
+      { 
+        path: "seller/dashboard", 
+        Component: (
+          <ProtectedRoute requiredRoles={['vendor', 'admin', 'buyer']}>
+            <SellerDashboardPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "seller/upload", 
+        Component: (
+          <ProtectedRoute requiredRoles={['vendor', 'admin']}>
+            <TenderUploadPage />
+          </ProtectedRoute>
+        ) 
+      },
       { path: "*", Component: NotFoundPage },
     ],
   },

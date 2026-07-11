@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router';
-import { Mail, Facebook, Twitter, Linkedin, Instagram, LogIn, UserPlus, Menu, X } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { Mail, Facebook, Twitter, Linkedin, Instagram, LogIn, UserPlus, Menu, X, LogOut, User, Settings, LayoutDashboard } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import logoImg from "figma:asset/017d37535b23405206a333d588f1e3b1ba502224.png";
 
 interface HeaderProps {
@@ -10,7 +11,10 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -26,8 +30,28 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
     { to: '/reviews', label: 'Reviews' },
     { to: '/about', label: 'About' },
     { to: '/contact', label: 'Contact' },
-    { to: '/seller', label: 'Seller Portal' },
   ];
+
+  const handleLogout = async () => {
+    await logout();
+    setUserMenuOpen(false);
+    navigate('/');
+  };
+
+  const getUserMenuItems = () => {
+    if (!user) return [];
+    
+    const items = [
+      { to: '/seller/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
+      { to: '/seller/upload', label: 'Upload Tender', icon: <UserPlus size={16} /> },
+    ];
+
+    if (user.role === 'admin') {
+      items.push({ to: '/admin', label: 'Admin Panel', icon: <Settings size={16} /> });
+    }
+
+    return items;
+  };
 
   return (
     <header className="w-full">
@@ -91,20 +115,63 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
 
           {/* Auth Buttons + Mobile Hamburger */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={onLoginClick}
-              className="hidden sm:flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
-            >
-              <LogIn size={16} />
-              <span>Login</span>
-            </button>
-            <button
-              onClick={onRegisterClick}
-              className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg font-bold hover:bg-gray-800 transition-colors cursor-pointer text-sm"
-            >
-              <UserPlus size={16} />
-              <span>Register</span>
-            </button>
+            {isAuthenticated ? (
+              <div className="relative">
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center font-bold">
+                    {user?.fullName?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <span className="hidden sm:block max-w-[120px] truncate">{user?.fullName}</span>
+                </button>
+
+                {userMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setUserMenuOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1">
+                      {getUserMenuItems().map((item) => (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          {item.icon}
+                          {item.label}
+                        </Link>
+                      ))}
+                      <div className="border-t border-gray-200 my-1" />
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors w-full"
+                      >
+                        <LogOut size={16} />
+                        Logout
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={onLoginClick}
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
+                >
+                  <LogIn size={16} />
+                  <span>Login</span>
+                </button>
+                <button
+                  onClick={onRegisterClick}
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-900 text-white rounded-lg font-bold hover:bg-gray-800 transition-colors cursor-pointer text-sm"
+                >
+                  <UserPlus size={16} />
+                  <span>Register</span>
+                </button>
+              </>
+            )}
 
             {/* Hamburger — mobile only */}
             <button
@@ -135,20 +202,44 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
                   {label}
                 </Link>
               ))}
-              <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
-                <button
-                  onClick={() => { onLoginClick(); setMenuOpen(false); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm font-bold"
-                >
-                  <LogIn size={16} /> Login
-                </button>
-                <button
-                  onClick={() => { onRegisterClick(); setMenuOpen(false); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg font-bold hover:bg-gray-800 transition-colors text-sm"
-                >
-                  <UserPlus size={16} /> Register
-                </button>
-              </div>
+              {!isAuthenticated && (
+                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
+                  <button
+                    onClick={() => { onLoginClick(); setMenuOpen(false); }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm font-bold"
+                  >
+                    <LogIn size={16} /> Login
+                  </button>
+                  <button
+                    onClick={() => { onRegisterClick(); setMenuOpen(false); }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-lg font-bold hover:bg-gray-800 transition-colors text-sm"
+                  >
+                    <UserPlus size={16} /> Register
+                  </button>
+                </div>
+              )}
+              {isAuthenticated && (
+                <div className="flex flex-col gap-1 mt-3 pt-3 border-t border-gray-200">
+                  {getUserMenuItems().map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-100 transition-colors"
+                    >
+                      {item.icon}
+                      {item.label}
+                    </Link>
+                  ))}
+                  <button
+                    onClick={() => { handleLogout(); setMenuOpen(false); }}
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-red-600 hover:bg-red-50 transition-colors mt-2"
+                  >
+                    <LogOut size={16} />
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -1,61 +1,76 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { MapPin, Building2, ExternalLink, Clock, Tag } from 'lucide-react';
 import { motion } from 'motion/react';
-
-interface Tender {
-  id: string;
-  title: string;
-  department: string;
-  location: string;
-  deadline: string;
-  value: string;
-  category: string;
-}
-
-const MOCK_TENDERS: Tender[] = [
-  {
-    id: 'TND-2024-001',
-    title: 'Construction of Multi-Story Residential Complex in Navi Mumbai',
-    department: 'CIDCO - City and Industrial Development Corporation',
-    location: 'Maharashtra, India',
-    deadline: '28 Feb 2026',
-    value: '₹ 150.50 Cr',
-    category: 'Construction'
-  },
-  {
-    id: 'TND-2024-002',
-    title: 'Supply and Installation of Solar Power Plants in 50 District Hospitals',
-    department: 'National Health Mission',
-    location: 'Uttar Pradesh, India',
-    deadline: '05 Mar 2026',
-    value: '₹ 25.00 Cr',
-    category: 'Energy'
-  },
-  {
-    id: 'TND-2024-003',
-    title: 'Implementation of Enterprise Resource Planning (ERP) System',
-    department: 'Bharat Electronics Limited (BEL)',
-    location: 'Karnataka, India',
-    deadline: '12 Mar 2026',
-    value: '₹ 12.80 Cr',
-    category: 'IT Services'
-  },
-  {
-    id: 'TND-2024-004',
-    title: 'Maintenance and Cleaning Services for Metro Stations Phase II',
-    department: 'Delhi Metro Rail Corporation (DMRC)',
-    location: 'Delhi, India',
-    deadline: '20 Feb 2026',
-    value: '₹ 8.50 Cr',
-    category: 'Services'
-  }
-];
+import { tenderService, Tender } from '../../services/tenderService';
+import { LoadingSpinner, Skeleton } from '../../components/Loading';
 
 export const TenderList: React.FC = () => {
+  const [tenders, setTenders] = useState<Tender[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchTenders = async () => {
+      try {
+        const response = await tenderService.getAllTenders({
+          page: 1,
+          limit: 4,
+          status: 'published',
+        });
+        setTenders(response.data.data);
+      } catch (err: any) {
+        console.error('Failed to fetch tenders:', err);
+        setError(err.response?.data?.message || 'Failed to load tenders');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTenders();
+  }, []);
+
+  if (loading) {
+    return (
+      <section className="py-24 relative overflow-hidden bg-[#F8FAFC]">
+        <div className="max-w-[1200px] mx-auto px-4 relative z-10">
+          <div className="mb-12">
+            <Skeleton className="h-8 w-48 mb-4" />
+            <Skeleton className="h-4 w-full max-w-2xl" />
+          </div>
+          <div className="hidden lg:block rounded-2xl shadow-sm bg-white border border-[#E5E7EB]">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="p-6 border-b border-gray-100 last:border-0">
+                <Skeleton className="h-6 w-full mb-3" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="py-24 relative overflow-hidden bg-[#F8FAFC]">
+        <div className="max-w-[1200px] mx-auto px-4 relative z-10">
+          <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-center">
+            <p className="text-red-700 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="py-24 relative overflow-hidden bg-[#F8FAFC]">
-      {/* Grid overlay */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.05]"
         style={{
           backgroundImage: 'linear-gradient(#111827 1px, transparent 1px), linear-gradient(90deg, #111827 1px, transparent 1px)',
@@ -74,7 +89,7 @@ export const TenderList: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="rounded-lg px-4 py-2 flex items-center gap-2 bg-white border border-[#E5E7EB]">
               <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse"></span>
-              <span className="text-sm font-bold text-[#111827]">1,240 New Today</span>
+              <span className="text-sm font-bold text-[#111827]">{tenders.length} Active</span>
             </div>
             <Link 
               to="/tenders"
@@ -107,9 +122,9 @@ export const TenderList: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E5E7EB]">
-              {MOCK_TENDERS.map((tender, index) => (
+              {tenders.map((tender, index) => (
                 <motion.tr 
-                  key={tender.id}
+                  key={tender._id}
                   initial={{ opacity: 0, x: -10 }}
                   whileInView={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
@@ -120,7 +135,7 @@ export const TenderList: React.FC = () => {
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-3">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-[#F3F4F6] border border-[#E5E7EB] text-[#6B7280]">
-                          {tender.id}
+                          {tender.tenderNumber}
                         </span>
                         <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[#6B7280]">
                           <Tag size={12} /> {tender.category}
@@ -135,7 +150,7 @@ export const TenderList: React.FC = () => {
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2 text-sm font-bold text-[#111827]">
                         <Building2 size={16} className="shrink-0 text-[#6B7280]" />
-                        <span className="line-clamp-1">{tender.department}</span>
+                        <span className="line-clamp-1">{tender.issuingOrganization || 'Government Tender'}</span>
                       </div>
                       <span className="text-xs pl-6 text-[#6B7280]">Verified Authority</span>
                     </div>
@@ -143,11 +158,11 @@ export const TenderList: React.FC = () => {
                   <td className="px-8 py-7">
                     <div className="flex flex-col gap-1.5">
                       <div className="text-sm font-bold w-fit px-2 py-0.5 rounded bg-[#DCFCE7] text-[#16A34A] border border-[#BBF7D0]">
-                        {tender.value}
+                        ₹ {tender.budget.estimated?.toLocaleString() || 'N/A'}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-[#6B7280]">
                         <MapPin size={14} className="shrink-0" />
-                        {tender.location}
+                        {tender.location || 'India'}
                       </div>
                     </div>
                   </td>
@@ -155,7 +170,7 @@ export const TenderList: React.FC = () => {
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2 text-sm font-bold text-[#EF4444]">
                         <Clock size={16} />
-                        {tender.deadline}
+                        {new Date(tender.submissionDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </div>
                       <div className="w-full h-1 rounded-full overflow-hidden bg-[#E5E7EB]">
                         <div className="h-full w-[30%] bg-[#EF4444]"></div>
@@ -164,7 +179,7 @@ export const TenderList: React.FC = () => {
                   </td>
                   <td className="px-8 py-7 text-right">
                     <Link 
-                      to={`/tenders/${tender.id}`}
+                      to={`/tenders/${tender._id}`}
                       className="inline-block px-6 py-2.5 text-[#111827] bg-white border border-[#E5E7EB] text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer active:scale-95 hover:border-[#111827]"
                     >
                       View Details
@@ -178,18 +193,19 @@ export const TenderList: React.FC = () => {
 
         {/* Mobile View (Cards) */}
         <div className="lg:hidden flex flex-col gap-6">
-          {MOCK_TENDERS.map((tender) => (
+          {tenders.map((tender) => (
             <Link 
-              key={tender.id}
-              to={`/tenders/${tender.id}`}
+              key={tender._id}
+              to={`/tenders/${tender._id}`}
               className="p-6 rounded-2xl flex flex-col gap-4 transition-all bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md"
             >
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-[#F3F4F6] text-[#6B7280]">
-                  {tender.id}
+                  {tender.tenderNumber}
                 </span>
                 <span className="text-xs font-bold flex items-center gap-1 text-[#EF4444]">
-                  <Clock size={14} /> {tender.deadline}
+                  <Clock size={14} />
+                  {new Date(tender.submissionDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                 </span>
               </div>
               <div>
@@ -201,19 +217,19 @@ export const TenderList: React.FC = () => {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">Authority</span>
                   <div className="flex items-center gap-2 text-xs font-bold text-[#111827]">
                     <Building2 size={14} className="text-[#6B7280]" />
-                    <span className="line-clamp-1">{tender.department.split('-')[0]}</span>
+                    <span className="line-clamp-1">{tender.issuingOrganization || 'Govt'}</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">Estimated Value</span>
                   <div className="text-xs font-bold text-[#16A34A]">
-                    {tender.value}
+                    ₹ {tender.budget.estimated?.toLocaleString() || 'N/A'}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-[#6B7280]">
                 <MapPin size={14} className="text-[#6B7280]" />
-                {tender.location}
+                {tender.location || 'India'}
               </div>
               <button className="w-full py-3 font-bold rounded-xl text-sm cursor-pointer transition-all text-[#111827] bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC]">
                 View Tender Details

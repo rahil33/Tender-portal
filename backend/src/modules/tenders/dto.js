@@ -4,7 +4,7 @@
 
 class TenderDTO {
   constructor(data) {
-    this.id = data._id;
+    this._id = data._id;
     this.title = data.title;
     this.tenderNumber = data.tenderNumber || null;
     this.slug = data.slug || null;
@@ -37,7 +37,7 @@ class TenderDTO {
 
 class TenderSummaryDTO {
   constructor(data) {
-    this.id = data._id;
+    this._id = data._id;
     this.title = data.title;
     this.tenderNumber = data.tenderNumber || null;
     this.slug = data.slug || null;
@@ -58,7 +58,7 @@ class TenderSummaryDTO {
 
 class TenderDocumentDTO {
   constructor(data) {
-    this.id = data._id;
+    this._id = data._id;
     this.documentType = data.documentType;
     this.documentName = data.documentName;
     this.documentUrl = data.documentUrl;

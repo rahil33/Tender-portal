@@ -1,10 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import {
   UploadCloud, FileText, Image, X, CheckCircle, ChevronDown,
   AlertCircle, ArrowLeft, ArrowRight, Package, Tag, IndianRupee,
-  Info,
+  Info, Loader2,
 } from 'lucide-react';
+import { tenderService, CreateTenderData } from '../../services/tenderService';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../contexts/NotificationContext';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -138,24 +141,87 @@ function DropZone({
 }
 
 export default function TenderUploadPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { success, error: showError } = useNotification();
   const [step, setStep] = useState<Step>(1);
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [pdfFiles, setPdfFiles] = useState<UploadedFile[]>([]);
   const [mediaFiles, setMediaFiles] = useState<UploadedFile[]>([]);
   const [category, setCategory] = useState('');
   const [catOpen, setCatOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    productCode: '',
+    quantity: '',
+    unit: '',
+    specs: '',
+    basePrice: '',
+    gstRate: '',
+    minOrder: '',
+    deliveryTime: '',
+    validityDate: '',
+    bidOpeningDate: '',
+    paymentTerms: '',
+    shippingNotes: '',
+  });
 
   const categories = [
-    'Office Supplies', 'Electronics & IT', 'Safety & PPE', 'Medical & Healthcare',
-    'Electrical & Hardware', 'Infrastructure & Civil', 'Vehicles & Transport',
-    'Furniture & Fixtures', 'Uniforms & Apparel', 'Other',
+    'goods', 'services', 'works', 'consultancy', 'it_software',
+    'medical', 'construction', 'transportation', 'agriculture', 'education', 'other',
   ];
 
-  const handleNext = () => {
-    if (step < 4) setStep((s) => (s + 1) as Step);
-    else setSubmitted(true);
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
-  const handleBack = () => { if (step > 1) setStep((s) => (s - 1) as Step); };
+
+  const handleNext = async () => {
+    if (step < 4) {
+      setStep(s => (s + 1) as Step);
+    } else {
+      await submitTender();
+    }
+  };
+
+  const handleBack = () => { 
+    if (step > 1) setStep(s => (s - 1) as Step); 
+  };
+
+  const submitTender = async () => {
+    if (!user?._id) {
+      showError('You must be logged in to upload a tender');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const tenderData: CreateTenderData = {
+        title: formData.title,
+        description: formData.description,
+        category: category || 'other',
+        submissionDeadline: formData.validityDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        location: 'India',
+        tags: formData.specs ? formData.specs.split(',').map(s => s.trim()) : [],
+        budget: {
+          estimated: formData.basePrice ? parseFloat(formData.basePrice) : 0,
+          currency: 'INR',
+          budgetType: 'fixed',
+        },
+      };
+
+      const response = await tenderService.createTender(tenderData);
+      
+      success('Tender submitted successfully', 'Your tender is now pending admin review');
+      setSubmitted(true);
+    } catch (err: any) {
+      const message = err.response?.data?.message || 'Failed to create tender';
+      showError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (submitted) {
     return (
@@ -246,6 +312,8 @@ export default function TenderUploadPage() {
                   <FormField label="Tender / Product Title" required>
                     <input
                       type="text"
+                      value={formData.title}
+                      onChange={(e) => handleInputChange('title', e.target.value)}
                       placeholder="e.g. Industrial Safety Helmets — Batch of 500"
                       className="form-input"
                     />
@@ -265,7 +333,7 @@ export default function TenderUploadPage() {
                         boxShadow: catOpen ? '0 0 0 4px rgba(22,163,74,0.1)' : 'none',
                       }}
                     >
-                      {category || 'Select a category'}
+                      {category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Select a category'}
                       <ChevronDown size={16} className={`transition-transform ${catOpen ? 'rotate-180' : ''}`} style={{ color: '#16A34A' }} />
                     </button>
                     {catOpen && (
@@ -279,7 +347,7 @@ export default function TenderUploadPage() {
                             onClick={() => { setCategory(c); setCatOpen(false); }}
                             className="w-full text-left px-4 py-3 text-sm hover:bg-emerald-50 transition-colors text-[#111827]"
                           >
-                            {c}
+                            {c.charAt(0).toUpperCase() + c.slice(1)}
                           </button>
                         ))}
                       </div>
@@ -288,21 +356,42 @@ export default function TenderUploadPage() {
                 </FormField>
 
                 <FormField label="Product / Item Code" hint="Internal SKU or catalog code">
-                  <input type="text" placeholder="e.g. SKU-HELM-500-YLW" className="form-input" />
+                  <input 
+                    type="text" 
+                    value={formData.productCode}
+                    onChange={(e) => handleInputChange('productCode', e.target.value)}
+                    placeholder="e.g. SKU-HELM-500-YLW" 
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <FormField label="Quantity Available" required>
-                  <input type="number" min="1" placeholder="e.g. 500" className="form-input" />
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={formData.quantity}
+                    onChange={(e) => handleInputChange('quantity', e.target.value)}
+                    placeholder="e.g. 500" 
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <FormField label="Unit of Measurement" required>
-                  <input type="text" placeholder="e.g. Units, Kg, Litres, Boxes" className="form-input" />
+                  <input 
+                    type="text" 
+                    value={formData.unit}
+                    onChange={(e) => handleInputChange('unit', e.target.value)}
+                    placeholder="e.g. Units, Kg, Litres, Boxes" 
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <div className="md:col-span-2">
                   <FormField label="Product Description" required>
                     <textarea
                       rows={4}
+                      value={formData.description}
+                      onChange={(e) => handleInputChange('description', e.target.value)}
                       placeholder="Describe the product in detail — specifications, material, compliance standards, condition (new/refurbished), etc."
                       className="form-input resize-none"
                     />
@@ -313,7 +402,9 @@ export default function TenderUploadPage() {
                   <FormField label="Key Specifications">
                     <textarea
                       rows={3}
-                      placeholder="e.g. Material: ABS Plastic, Weight: 350g, Color: Yellow, IS Standard: IS 2925"
+                      value={formData.specs}
+                      onChange={(e) => handleInputChange('specs', e.target.value)}
+                      placeholder="e.g. Material: ABS Plastic, Weight: 350g, Color: Yellow, IS Standard: IS 2925 (comma separated)"
                       className="form-input resize-none"
                     />
                   </FormField>
@@ -382,37 +473,73 @@ export default function TenderUploadPage() {
                 <FormField label="Base Price (₹)" required hint="Per unit before taxes">
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-[#9CA3AF]">₹</span>
-                    <input type="number" min="0" placeholder="0.00" className="form-input pl-8" />
+                    <input 
+                      type="number" 
+                      min="0" 
+                      value={formData.basePrice}
+                      onChange={(e) => handleInputChange('basePrice', e.target.value)}
+                      placeholder="0.00" 
+                      className="form-input pl-8" 
+                    />
                   </div>
                 </FormField>
 
                 <FormField label="GST Rate" required>
-                  <select className="form-input appearance-none bg-white">
+                  <select 
+                    value={formData.gstRate}
+                    onChange={(e) => handleInputChange('gstRate', e.target.value)}
+                    className="form-input appearance-none bg-white"
+                  >
                     <option value="">Select GST rate</option>
-                    {['0%', '5%', '12%', '18%', '28%'].map((r) => <option key={r}>{r}</option>)}
+                    {['0%', '5%', '12%', '18%', '28%'].map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </FormField>
 
                 <FormField label="Minimum Order Quantity">
-                  <input type="number" min="1" placeholder="e.g. 50" className="form-input" />
+                  <input 
+                    type="number" 
+                    min="1" 
+                    value={formData.minOrder}
+                    onChange={(e) => handleInputChange('minOrder', e.target.value)}
+                    placeholder="e.g. 50" 
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <FormField label="Delivery Timeframe" required>
-                  <input type="text" placeholder="e.g. 15 working days from PO" className="form-input" />
+                  <input 
+                    type="text" 
+                    value={formData.deliveryTime}
+                    onChange={(e) => handleInputChange('deliveryTime', e.target.value)}
+                    placeholder="e.g. 15 working days from PO" 
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <FormField label="Tender Validity Date" required>
-                  <input type="date" className="form-input" />
+                  <input 
+                    type="date" 
+                    value={formData.validityDate}
+                    onChange={(e) => handleInputChange('validityDate', e.target.value)}
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <FormField label="Bid Opening Date">
-                  <input type="date" className="form-input" />
+                  <input 
+                    type="date" 
+                    value={formData.bidOpeningDate}
+                    onChange={(e) => handleInputChange('bidOpeningDate', e.target.value)}
+                    className="form-input" 
+                  />
                 </FormField>
 
                 <div className="md:col-span-2">
                   <FormField label="Payment Terms">
                     <textarea
                       rows={3}
+                      value={formData.paymentTerms}
+                      onChange={(e) => handleInputChange('paymentTerms', e.target.value)}
                       placeholder="e.g. 30% advance on PO, 70% on delivery and inspection acceptance"
                       className="form-input resize-none"
                     />
@@ -423,6 +550,8 @@ export default function TenderUploadPage() {
                   <FormField label="Shipping & Delivery Notes">
                     <textarea
                       rows={2}
+                      value={formData.shippingNotes}
+                      onChange={(e) => handleInputChange('shippingNotes', e.target.value)}
                       placeholder="e.g. Delivery included within 50 km radius. Extra charges applicable beyond."
                       className="form-input resize-none"
                     />
@@ -511,11 +640,22 @@ export default function TenderUploadPage() {
             <div className="text-xs font-bold text-[#9CA3AF] hidden sm:block uppercase tracking-widest">Step {step} of 4</div>
             <button
               onClick={handleNext}
-              className="flex items-center gap-2 px-6 py-3 rounded-[12px] text-sm font-bold text-white transition-all hover:-translate-y-0.5 shadow-md active:scale-95"
+              disabled={loading}
+              className="flex items-center gap-2 px-6 py-3 rounded-[12px] text-sm font-bold text-white transition-all hover:-translate-y-0.5 shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
               style={{ background: '#16A34A', boxShadow: '0 4px 12px rgba(22,163,74,0.2)' }}
             >
-              {step === 4 ? 'Submit Tender' : 'Continue'}
-              <ArrowRight size={16} />
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Submitting...
+                </>
+              ) : step === 4 ? (
+                'Submit Tender'
+              ) : (
+                <>
+                  Continue <ArrowRight size={16} />
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/', tendersValidators.getAllTenders, tendersController.getAllTenders);
 router.get('/search', tendersValidators.searchTenders, tendersController.searchTenders);
 router.get('/statistics', tendersController.getTenderStatistics);
-router.get('/:tenderId', protect, tendersValidators.getTenderById, tendersController.getTenderById);
+router.get('/:tenderId', tendersValidators.getTenderById, tendersController.getTenderById);
 /**
  * Tender CRUD Routes (login required)
  */
