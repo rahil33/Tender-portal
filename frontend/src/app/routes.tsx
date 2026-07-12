@@ -22,6 +22,13 @@ import TenderUploadPage from "./pages/TenderUploadPage";
 import BuyerDashboardPage from "./pages/BuyerDashboardPage";
 import MyBidsPage from "./pages/MyBidsPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AdminUsersPage from "./pages/AdminUsersPage";
+import AdminOrganizationsPage from "./pages/AdminOrganizationsPage";
+import AdminTendersPage from "./pages/AdminTendersPage";
+import AdminBidsPage from "./pages/AdminBidsPage";
+import AdminAuditLogsPage from "./pages/AdminAuditLogsPage";
+import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
+import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -122,6 +129,86 @@ export const router = createBrowserRouter([
             <AdminDashboardPage />
           </ProtectedRoute>
         ) 
+      },
+      {
+        path: "admin/users",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminUsersPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/users/:userId",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminUsersPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/organizations",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminOrganizationsPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/organizations/:organizationId",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminOrganizationsPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/tenders",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminTendersPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/tenders/:tenderId",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminTendersPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/bids",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminBidsPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/audit-logs",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminAuditLogsPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/analytics",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminAnalyticsPage />
+          </ProtectedRoute>
+        )
+      },
+      {
+        path: "admin/notifications",
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminNotificationsPage />
+          </ProtectedRoute>
+        )
       },
       
       { path: "*", Component: NotFoundPage },

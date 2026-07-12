@@ -98,4 +98,51 @@ router.get('/health', adminValidators.getSystemHealth, adminController.getSystem
  */
 router.get('/statistics', adminValidators.getPlatformStatistics, adminController.getPlatformStatistics);
 
+/**
+ * User Management Routes (Extended)
+ */
+router.post('/users/:userId/suspend', adminController.suspendUser);
+router.post('/users/:userId/reactivate', adminController.reactivateUser);
+router.delete('/users/:userId', adminController.deleteUser);
+router.post('/users/:userId/reset-password', adminController.resetUserPassword);
+router.post('/users/:userId/logout', adminController.forceLogoutUser);
+router.get('/users/:userId/login-history', adminController.getUserLoginHistory);
+
+/**
+ * Organization Management Routes (Extended)
+ */
+router.post('/organizations/:organizationId/suspend', adminController.suspendOrganization);
+router.post('/organizations/:organizationId/reactivate', adminController.reactivateOrganization);
+router.post('/organizations/documents/:documentId/approve', adminController.approveOrganizationDocument);
+router.post('/organizations/documents/:documentId/reject', adminController.rejectOrganizationDocument);
+
+/**
+ * Tender Moderation Routes (Extended)
+ */
+router.post('/tenders/:tenderId/publish', adminController.publishTender);
+router.post('/tenders/:tenderId/unpublish', adminController.unpublishTender);
+router.post('/tenders/:tenderId/archive', adminController.archiveTender);
+router.post('/tenders/:tenderId/restore', adminController.restoreTender);
+router.delete('/tenders/:tenderId', adminController.deleteTender);
+
+/**
+ * Bid Moderation Routes (Extended)
+ */
+router.post('/bids/:bidId/withdraw', adminController.forceWithdrawBid);
+router.post('/bids/:bidId/flag', adminController.flagBid);
+
+/**
+ * Notification Management Routes
+ */
+router.post('/notifications/broadcast', adminController.broadcastNotification);
+router.post('/notifications/:userId/send', adminController.sendTargetedNotification);
+router.post('/notifications/:notificationId/retry', adminController.retryFailedNotification);
+router.get('/notifications/failed', adminController.getFailedNotifications);
+
+/**
+ * Security & Analytics Routes
+ */
+router.get('/security/metrics', adminController.getSecurityMetrics);
+router.get('/analytics', adminController.getDetailedAnalytics);
+
 module.exports = router;

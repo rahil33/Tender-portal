@@ -614,6 +614,382 @@ class AdminController {
       );
     }
   }
+
+  async suspendUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const { reason } = req.body;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.suspendUser(userId, reason, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to suspend user', null, [error.message])
+      );
+    }
+  }
+
+  async reactivateUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.reactivateUser(userId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to reactivate user', null, [error.message])
+      );
+    }
+  }
+
+  async deleteUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.deleteUser(userId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to delete user', null, [error.message])
+      );
+    }
+  }
+
+  async resetUserPassword(req, res) {
+    try {
+      const { userId } = req.params;
+      const { newPassword } = req.body;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.resetUserPassword(userId, newPassword, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to reset password', null, [error.message])
+      );
+    }
+  }
+
+  async forceLogoutUser(req, res) {
+    try {
+      const { userId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.forceLogoutUser(userId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to force logout', null, [error.message])
+      );
+    }
+  }
+
+  async getUserLoginHistory(req, res) {
+    try {
+      const { userId } = req.params;
+      const { page = 1, limit = 20 } = req.query;
+      const result = await adminService.getUserLoginHistory(
+        userId,
+        parseInt(page),
+        parseInt(limit)
+      );
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, 'Login history retrieved', result.data)
+      );
+    } catch (error) {
+      return res.status(500).json(
+        new AdminResponseDTO(false, 'Failed to get login history', null, [error.message])
+      );
+    }
+  }
+
+  async suspendOrganization(req, res) {
+    try {
+      const { organizationId } = req.params;
+      const { reason } = req.body;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.suspendOrganization(organizationId, reason, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to suspend organization', null, [error.message])
+      );
+    }
+  }
+
+  async reactivateOrganization(req, res) {
+    try {
+      const { organizationId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.reactivateOrganization(organizationId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to reactivate organization', null, [error.message])
+      );
+    }
+  }
+
+  async approveOrganizationDocument(req, res) {
+    try {
+      const { documentId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.approveOrganizationDocument(documentId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to approve document', null, [error.message])
+      );
+    }
+  }
+
+  async rejectOrganizationDocument(req, res) {
+    try {
+      const { documentId } = req.params;
+      const { reason } = req.body;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.rejectOrganizationDocument(documentId, reason, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to reject document', null, [error.message])
+      );
+    }
+  }
+
+  async publishTender(req, res) {
+    try {
+      const { tenderId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.publishTender(tenderId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to publish tender', null, [error.message])
+      );
+    }
+  }
+
+  async unpublishTender(req, res) {
+    try {
+      const { tenderId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.unpublishTender(tenderId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to unpublish tender', null, [error.message])
+      );
+    }
+  }
+
+  async archiveTender(req, res) {
+    try {
+      const { tenderId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.archiveTender(tenderId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to archive tender', null, [error.message])
+      );
+    }
+  }
+
+  async restoreTender(req, res) {
+    try {
+      const { tenderId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.restoreTender(tenderId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to restore tender', null, [error.message])
+      );
+    }
+  }
+
+  async deleteTender(req, res) {
+    try {
+      const { tenderId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.deleteTender(tenderId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to delete tender', null, [error.message])
+      );
+    }
+  }
+
+  async forceWithdrawBid(req, res) {
+    try {
+      const { bidId } = req.params;
+      const { reason } = req.body;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.forceWithdrawBid(bidId, reason, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to withdraw bid', null, [error.message])
+      );
+    }
+  }
+
+  async flagBid(req, res) {
+    try {
+      const { bidId } = req.params;
+      const { reason } = req.body;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.flagBid(bidId, reason, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to flag bid', null, [error.message])
+      );
+    }
+  }
+
+  async broadcastNotification(req, res) {
+    try {
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.broadcastNotification(req.body, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message, result.data)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to broadcast notification', null, [error.message])
+      );
+    }
+  }
+
+  async sendTargetedNotification(req, res) {
+    try {
+      const { userId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.sendTargetedNotification(userId, req.body, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message, result.data)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to send notification', null, [error.message])
+      );
+    }
+  }
+
+  async retryFailedNotification(req, res) {
+    try {
+      const { notificationId } = req.params;
+      const performedBy = req.user?.id || req.user?.userId;
+      const result = await adminService.retryFailedNotification(notificationId, performedBy);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, result.message)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new AdminResponseDTO(false, 'Failed to retry notification', null, [error.message])
+      );
+    }
+  }
+
+  async getFailedNotifications(req, res) {
+    try {
+      const { page = 1, limit = 20 } = req.query;
+      const result = await adminService.getFailedNotifications(
+        parseInt(page),
+        parseInt(limit)
+      );
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, 'Failed notifications retrieved', result.data)
+      );
+    } catch (error) {
+      return res.status(500).json(
+        new AdminResponseDTO(false, 'Failed to get failed notifications', null, [error.message])
+      );
+    }
+  }
+
+  async getSecurityMetrics(req, res) {
+    try {
+      const result = await adminService.getSecurityMetrics();
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, 'Security metrics retrieved', result.data)
+      );
+    } catch (error) {
+      return res.status(500).json(
+        new AdminResponseDTO(false, 'Failed to get security metrics', null, [error.message])
+      );
+    }
+  }
+
+  async getDetailedAnalytics(req, res) {
+    try {
+      const { period = '30d' } = req.query;
+      const result = await adminService.getDetailedAnalytics(period);
+
+      return res.status(200).json(
+        new AdminResponseDTO(result.success, 'Analytics retrieved', result.data)
+      );
+    } catch (error) {
+      return res.status(500).json(
+        new AdminResponseDTO(false, 'Failed to get analytics', null, [error.message])
+      );
+    }
+  }
 }
 
 module.exports = new AdminController();
