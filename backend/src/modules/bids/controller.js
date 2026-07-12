@@ -1,5 +1,6 @@
 const bidsService = require('./service');
 const { BidsResponseDTO } = require('./dto');
+const logger = require('../../config/logger');
 
 class BidsController {
   async createBid(req, res) {
@@ -9,10 +10,17 @@ class BidsController {
 
       const result = await bidsService.createBid(vendorId, organizationId, bidData);
 
+      logger.info('Bid created', { 
+        bidId: result.data?._id, 
+        userId: vendorId,
+        tenderId: bidData.tenderId 
+      });
+
       return res.status(201).json(
         new BidsResponseDTO(result.success, result.message, result.data)
       );
     } catch (error) {
+      logger.error('Create bid failed', { error: error.message, userId: req.user?.id });
       return res.status(400).json(
         new BidsResponseDTO(false, 'Failed to create bid', null, [error.message])
       );
@@ -22,12 +30,56 @@ class BidsController {
   async getBidById(req, res) {
     try {
       const { bidId } = req.params;
-      const result = await bidsService.getBidById(bidId);
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+
+      // SECURITY: Get bid first to check permissions
+      const bid = await bidsService.getBidById(bidId);
+      
+      if (!bid || !bid.data) {
+        return res.status(404).json(
+          new BidsResponseDTO(false, 'Bid not found', null, ['Bid not found'])
+        );
+      }
+
+      // SECURITY: Authorization check - only allow access if:
+      // 1. User is admin/evaluator
+      // 2. User is the bid owner (vendor)
+      // 3. User is associated with the tender
+      const allowedRoles = ['admin', 'evaluator'];
+      
+      if (!allowedRoles.includes(userRole)) {
+        // Check if user is bid owner
+        if (bid.data.vendorId?._id?.toString() !== userId && 
+            bid.data.vendorId?.toString() !== userId) {
+          // Check if user is associated with the tender
+          const tenderService = require('../tenders/service');
+          const tender = await tenderService.getTenderById(bid.data.tenderId?._id || bid.data.tenderId);
+          
+          if (!tender || !tender.data || 
+              tender.data.createdBy?.toString() !== userId) {
+            logger.warn('Unauthorized bid access attempt', { 
+              bidId, 
+              userId, 
+              userRole 
+            });
+            return res.status(403).json(
+              new BidsResponseDTO(false, 'Access denied', null, ['You do not have permission to view this bid'])
+            );
+          }
+        }
+      }
 
       return res.status(200).json(
-        new BidsResponseDTO(result.success, 'Bid retrieved', result.data)
+        new BidsResponseDTO(true, 'Bid retrieved', bid.data)
       );
     } catch (error) {
+      if (error.message === 'Bid not found') {
+        return res.status(404).json(
+          new BidsResponseDTO(false, 'Bid not found', null, [error.message])
+        );
+      }
+      logger.error('Get bid failed', { error: error.message, userId: req.user?.id });
       return res.status(404).json(
         new BidsResponseDTO(false, 'Failed to get bid', null, [error.message])
       );

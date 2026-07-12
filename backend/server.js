@@ -34,10 +34,40 @@ const app = express();
 connectDB();
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────
-// Security Headers
-app.use(helmet());
+// Security Headers with Enhanced Configuration
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'", 'http://localhost:*', 'https://*'],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true,
+  },
+  crossOriginEmbedderPolicy: true,
+  crossOriginOpenerPolicy: true,
+  crossOriginResourcePolicy: { policy: "same-site" },
+  dnsPrefetchControl: { allow: false },
+  frameguard: { action: 'deny' },
+  noSniff: true,
+  originAgentCluster: true,
+  permittedCrossDomainPolicies: { permittedPolicies: "none" },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  xssFilter: true,
+}));
 
-// CORS Configuration
+// CORS Configuration with Enhanced Security
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
   : [];
@@ -47,19 +77,26 @@ app.use(cors({
     // Allow requests with no origin (like Postman, curl)
     if (!origin) return callback(null, true);
 
-    // In development, allow any localhost port automatically
-    if (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:\d+$/.test(origin)) {
-      return callback(null, true);
+    // In development, allow localhost with explicit port validation
+    if (process.env.NODE_ENV !== 'production') {
+      if (/^http:\/\/localhost:\d+$/.test(origin)) {
+        return callback(null, true);
+      }
     }
 
-    // Otherwise check the explicit allow-list
+    // Production: strict whitelist
     if (corsOrigins.includes(origin)) {
       return callback(null, true);
     }
 
+    logger.warn('CORS rejected origin', { origin, path: req.path });
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Request-ID'],
+  exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+  maxAge: 86400, // 24 hours
 }));
 
 // Compression
@@ -68,9 +105,26 @@ app.use(compression());
 // API Versioning
 app.use('/api', apiVersion);
 
-// Body Parser
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Body Parser with Size Limits and Content-Type Validation
+app.use(express.json({ 
+  limit: '10mb',
+  type: ['application/json', 'application/*+json'],
+  strict: true,
+}));
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '10mb',
+  parameterLimit: 100,
+}));
+
+// Request ID for tracing
+const { generateSecureToken } = require('./src/utils/security');
+app.use((req, res, next) => {
+  const requestId = req.headers['x-request-id'] || generateSecureToken(16);
+  req.requestId = requestId;
+  res.setHeader('X-Request-ID', requestId);
+  next();
+});
 
 // Request Logging
 app.use(requestLogger);
