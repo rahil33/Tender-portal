@@ -249,7 +249,6 @@ const bidSchema = new mongoose.Schema(
 bidSchema.index({ tenderId: 1, vendorId: 1, isDeleted: 1 });
 bidSchema.index({ status: 1, isDeleted: 1 });
 bidSchema.index({ submittedAt: 1, isDeleted: 1 });
-bidSchema.index({ bidAmount: 1, isDeleted: 1 });
 bidSchema.index({ tenderId: 1, status: 1, isDeleted: 1 });
 bidSchema.index({ vendorId: 1, status: 1, submittedAt: -1 });
 bidSchema.index({ evaluationStatus: 1, tenderId: 1, isDeleted: 1 });

@@ -1,5 +1,6 @@
 const { Bid } = require('./model');
 const { Tender } = require('../tenders/model');
+const mongoose = require('mongoose');
 const notificationService = require('../notifications/service');
 const {
   BidDTO,
@@ -280,10 +281,35 @@ class BidsService {
       const sortValue = filters.sortOrder === SORT_ORDER.ASC ? 1 : -1;
       const sort = { [sortField]: sortValue };
 
+      const projection = {
+        _id: 1,
+        bidNumber: 1,
+        tenderId: 1,
+        vendorId: 1,
+        organizationId: 1,
+        status: 1,
+        bidType: 1,
+        bidAmount: 1,
+        currency: 1,
+        evaluationStatus: 1,
+        submittedAt: 1,
+        createdAt: 1,
+      };
+
       const bids = await Bid.find(query)
-        .populate('tenderId', 'title tenderNumber')
-        .populate('vendorId', 'fullName email')
-        .populate('organizationId', 'name')
+        .select(projection)
+        .populate({
+          path: 'tenderId',
+          select: 'title tenderNumber',
+        })
+        .populate({
+          path: 'vendorId',
+          select: 'fullName email',
+        })
+        .populate({
+          path: 'organizationId',
+          select: 'name',
+        })
         .sort(sort)
         .skip(skip)
         .limit(limit)

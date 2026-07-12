@@ -106,7 +106,9 @@ class TendersService {
 
   async getTenderById(tenderId) {
     try {
-      const tender = await Tender.findOne({ _id: tenderId, isDeleted: false }).lean();
+      const tender = await Tender.findOne({ _id: tenderId, isDeleted: false })
+        .lean()
+        .select('-__v');
 
       if (!tender) {
         throw new Error('Tender not found');
@@ -245,7 +247,30 @@ class TendersService {
       const sortValue = filters.sortOrder === SORT_ORDER.ASC ? 1 : -1;
       const sort = { [sortField]: sortValue };
 
+      const projection = {
+        _id: 1,
+        title: 1,
+        tenderNumber: 1,
+        slug: 1,
+        description: 1,
+        category: 1,
+        status: 1,
+        budget: 1,
+        submissionDeadline: 1,
+        openingDate: 1,
+        issuingOrganization: 1,
+        createdBy: 1,
+        publishedAt: 1,
+        location: 1,
+        department: 1,
+        tags: 1,
+        views: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+
       const tenders = await Tender.find(query)
+        .select(projection)
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -276,6 +301,7 @@ class TendersService {
       const query = {
         status: TENDER_STATUS.PUBLISHED,
         isArchived: false,
+        isDeleted: false,
         $or: [
           { title: { $regex: searchTerm, $options: 'i' } },
           { tenderNumber: { $regex: searchTerm, $options: 'i' } },
@@ -285,7 +311,23 @@ class TendersService {
         ],
       };
 
+      const projection = {
+        _id: 1,
+        title: 1,
+        tenderNumber: 1,
+        slug: 1,
+        description: 1,
+        category: 1,
+        status: 1,
+        budget: 1,
+        submissionDeadline: 1,
+        location: 1,
+        publishedAt: 1,
+        createdAt: 1,
+      };
+
       const results = await Tender.find(query)
+        .select(projection)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

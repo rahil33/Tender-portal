@@ -277,15 +277,13 @@ const tenderSchema = new mongoose.Schema(
 );
 
 tenderSchema.index({ title: 'text', description: 'text', tenderNumber: 'text' });
-tenderSchema.index({ status: 1, isArchived: 1, isDeleted: 0 });
-tenderSchema.index({ submissionDeadline: 1, status: 1 });
-tenderSchema.index({ createdBy: 1, isDeleted: 0 });
-tenderSchema.index({ category: 1, status: 1 });
-tenderSchema.index({ location: 1, isDeleted: 0 });
-tenderSchema.index({ 'budget.estimated': 1, isDeleted: 0 });
-tenderSchema.index({ status: 1, category: 1, isArchived: 1, isDeleted: 1 });
-tenderSchema.index({ issuingOrganization: 1, status: 1, isDeleted: 1 });
+tenderSchema.index({ status: 1, isArchived: 1, isDeleted: 1 });
 tenderSchema.index({ submissionDeadline: 1, status: 1, isDeleted: 1 });
+tenderSchema.index({ createdBy: 1, isDeleted: 1 });
+tenderSchema.index({ category: 1, status: 1, isDeleted: 1 });
+tenderSchema.index({ location: 1, isDeleted: 1 });
+tenderSchema.index({ 'budget.estimated': 1, isDeleted: 1 });
+tenderSchema.index({ issuingOrganization: 1, status: 1, isDeleted: 1 });
 
 tenderSchema.pre('deleteOne', async function(next) {
   try {

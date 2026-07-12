@@ -26,8 +26,12 @@ const bookmarksRoutes = require('./src/modules/bookmarks/routes');
 const requestLogger = require('./src/middleware/requestLogger');
 const notFoundHandler = require('./src/middleware/notFoundHandler');
 const { errorHandler } = require('./src/middleware/errorHandler');
+const { generalLimiter } = require('./src/middleware/rateLimiter');
+const logger = require('./src/config/logger');
 
 const app = express();
+
+let server;
 
 // ─── DATABASE ─────────────────────────────────────────────────────────
 // Connect MongoDB
@@ -128,6 +132,9 @@ app.use((req, res, next) => {
 
 // Request Logging
 app.use(requestLogger);
+
+// Rate Limiting (applied after logging)
+app.use(generalLimiter);
 
 // ─── ROUTES ───────────────────────────────────────────────────────────
 /**
@@ -288,7 +295,7 @@ app.use(errorHandler);
 // ─── SERVER STARTUP ───────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server = app.listen(PORT, () => {
   console.log(`
   ╔════════════════════════════════════════════════╗
   ║  Phoenix Tender Tech Backend API               ║
@@ -296,6 +303,45 @@ app.listen(PORT, () => {
   ║  Environment: ${process.env.NODE_ENV || 'development'}           ║
   ╚════════════════════════════════════════════════╝
   `);
+});
+
+// ─── GRACEFUL SHUTDOWN ────────────────────────────────────────────────
+const gracefulShutdown = async (signal) => {
+  logger.info(`Graceful shutdown initiated (${signal})`);
+  
+  if (server) {
+    server.close(async () => {
+      logger.info('HTTP server closed');
+      
+      try {
+        const mongoose = require('mongoose');
+        await mongoose.connection.close();
+        logger.info('MongoDB connection closed');
+      } catch (error) {
+        logger.error('Error closing MongoDB connection:', error);
+      }
+      
+      process.exit(0);
+    });
+    
+    setTimeout(() => {
+      logger.error('Forced shutdown due to timeout');
+      process.exit(1);
+    }, 30000);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('unhandledRejection');
 });
 
 module.exports = app;
