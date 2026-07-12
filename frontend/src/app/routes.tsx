@@ -21,16 +21,31 @@ import SellerDashboardPage from "./pages/SellerDashboardPage";
 import TenderUploadPage from "./pages/TenderUploadPage";
 import BuyerDashboardPage from "./pages/BuyerDashboardPage";
 import MyBidsPage from "./pages/MyBidsPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage";
-import AdminUsersPage from "./pages/AdminUsersPage";
-import AdminOrganizationsPage from "./pages/AdminOrganizationsPage";
-import AdminTendersPage from "./pages/AdminTendersPage";
-import AdminBidsPage from "./pages/AdminBidsPage";
-import AdminAuditLogsPage from "./pages/AdminAuditLogsPage";
-import AdminAnalyticsPage from "./pages/AdminAnalyticsPage";
-import AdminNotificationsPage from "./pages/AdminNotificationsPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth } from "../contexts/AuthContext";
+import { lazy, Suspense } from "react";
+
+const AdminDashboardPage = lazy(() => import("./pages/AdminDashboardPage"));
+const AdminUsersPage = lazy(() => import("./pages/AdminUsersPage"));
+const AdminOrganizationsPage = lazy(() => import("./pages/AdminOrganizationsPage"));
+const AdminTendersPage = lazy(() => import("./pages/AdminTendersPage"));
+const AdminBidsPage = lazy(() => import("./pages/AdminBidsPage"));
+const AdminAuditLogsPage = lazy(() => import("./pages/AdminAuditLogsPage"));
+const AdminAnalyticsPage = lazy(() => import("./pages/AdminAnalyticsPage"));
+const AdminNotificationsPage = lazy(() => import("./pages/AdminNotificationsPage"));
+
+const AdminPageLoader = ({ children }: { children: React.ReactNode }) => (
+  <Suspense fallback={
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-gray-600 font-medium">Loading...</p>
+      </div>
+    </div>
+  }>
+    {children}
+  </Suspense>
+);
 
 // Role-based redirect component
 const DashboardRedirect = () => {
@@ -117,97 +132,121 @@ export const router = createBrowserRouter([
       { 
         path: "admin/dashboard", 
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminDashboardPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminDashboardPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         ) 
       },
       { 
         path: "admin", 
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminDashboardPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminDashboardPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         ) 
       },
       {
         path: "admin/users",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminUsersPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminUsersPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/users/:userId",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminUsersPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminUsersPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/organizations",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminOrganizationsPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminOrganizationsPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/organizations/:organizationId",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminOrganizationsPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminOrganizationsPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/tenders",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminTendersPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminTendersPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/tenders/:tenderId",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminTendersPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminTendersPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/bids",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminBidsPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminBidsPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/audit-logs",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminAuditLogsPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminAuditLogsPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/analytics",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminAnalyticsPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminAnalyticsPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       {
         path: "admin/notifications",
         element: (
-          <ProtectedRoute requiredRoles={['admin']}>
-            <AdminNotificationsPage />
-          </ProtectedRoute>
+          <AdminPageLoader>
+            <ProtectedRoute requiredRoles={['admin']}>
+              <AdminNotificationsPage />
+            </ProtectedRoute>
+          </AdminPageLoader>
         )
       },
       

@@ -16,8 +16,6 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
-  console.log('[Header] Render:', { user, isAuthenticated, token: localStorage.getItem('authToken') });
-
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);

@@ -26,8 +26,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: ini
   });
   const [formError, setFormError] = useState('');
 
-  console.log('[AuthModal] Render:', { isOpen, mode, user, isAuthenticated });
-
   React.useEffect(() => {
     setMode(initialMode);
     setFormData({
@@ -63,17 +61,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: ini
     e.preventDefault();
     setFormError('');
 
-    try {
-      if (mode === 'login') {
-        console.log('=== AuthModal: Calling login() ===');
-        const loginResult = await login({ email: formData.email, password: formData.password });
-        console.log('=== AuthModal: login() completed ===');
-        console.log('Login result:', loginResult);
-        success('Login successful!', 'Welcome back');
-        console.log('Closing modal...');
-        onClose();
-        console.log('Modal closed');
-      } else {
+try {
+        if (mode === 'login') {
+          await login({ email: formData.email, password: formData.password });
+          success('Login successful!', 'Welcome back');
+          onClose();
+        } else {
         const result = await register({
           fullName: formData.fullName,
           email: formData.email,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Users, Search, Filter, Eye, UserX, UserCheck, Lock, LogOut, Trash2,
@@ -225,73 +225,12 @@ export default function AdminUsersPage() {
                     </TableHeader>
                     <TableBody>
                       {users.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium text-gray-900">{user.fullName}</div>
-                              <div className="text-sm text-gray-500">{user.email}</div>
-                              {user.companyName && (
-                                <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
-                                  <Building size={12} /> {user.companyName}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getRoleBadge(user.role)}</TableCell>
-                          <TableCell>{getStatusBadge(user)}</TableCell>
-                          <TableCell>
-                            <div className="text-sm text-gray-500">
-                              {new Date(user.createdAt).toLocaleDateString()}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MoreVertical size={16} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => navigate(`/admin/users/${user.id}`)}>
-                                  <Eye size={16} className="mr-2" /> View Details
-                                </DropdownMenuItem>
-                                {user.isActive ? (
-                                  <DropdownMenuItem
-                                    onClick={() => openActionDialog(user, 'suspend')}
-                                    className="text-orange-600"
-                                  >
-                                    <UserX size={16} className="mr-2" /> Suspend
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem
-                                    onClick={() => openActionDialog(user, 'reactivate')}
-                                    className="text-green-600"
-                                  >
-                                    <UserCheck size={16} className="mr-2" /> Reactivate
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() => openActionDialog(user, 'reset')}
-                                  className="text-blue-600"
-                                >
-                                  <Lock size={16} className="mr-2" /> Reset Password
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => openActionDialog(user, 'logout')}
-                                  className="text-purple-600"
-                                >
-                                  <LogOut size={16} className="mr-2" /> Force Logout
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => openActionDialog(user, 'delete')}
-                                  className="text-red-600"
-                                >
-                                  <Trash2 size={16} className="mr-2" /> Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
+                        <UserTableRow
+                          key={user.id}
+                          user={user}
+                          onNavigate={navigate}
+                          onAction={openActionDialog}
+                        />
                       ))}
                     </TableBody>
                   </Table>
@@ -373,3 +312,81 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+
+const UserTableRow = memo(({ user, onNavigate, onAction }: { 
+  user: User; 
+  onNavigate: (path: string) => void;
+  onAction: (user: User, type: any) => void;
+}) => {
+  return (
+    <TableRow key={user.id}>
+      <TableCell>
+        <div>
+          <div className="font-medium text-gray-900">{user.fullName}</div>
+          <div className="text-sm text-gray-500">{user.email}</div>
+          {user.companyName && (
+            <div className="text-xs text-gray-400 flex items-center gap-1 mt-1">
+              <Building size={12} /> {user.companyName}
+            </div>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>{getRoleBadge(user.role)}</TableCell>
+      <TableCell>{getStatusBadge(user)}</TableCell>
+      <TableCell>
+        <div className="text-sm text-gray-500">
+          {new Date(user.createdAt).toLocaleDateString()}
+        </div>
+      </TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">
+              <MoreVertical size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onNavigate(`/admin/users/${user.id}`)}>
+              <Eye size={16} className="mr-2" /> View Details
+            </DropdownMenuItem>
+            {user.isActive ? (
+              <DropdownMenuItem
+                onClick={() => onAction(user, 'suspend')}
+                className="text-orange-600"
+              >
+                <UserX size={16} className="mr-2" /> Suspend
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => onAction(user, 'reactivate')}
+                className="text-green-600"
+              >
+                <UserCheck size={16} className="mr-2" /> Reactivate
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => onAction(user, 'reset')}
+              className="text-blue-600"
+            >
+              <Lock size={16} className="mr-2" /> Reset Password
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onAction(user, 'logout')}
+              className="text-purple-600"
+            >
+              <LogOut size={16} className="mr-2" /> Force Logout
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onAction(user, 'delete')}
+              className="text-red-600"
+            >
+              <Trash2 size={16} className="mr-2" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+UserTableRow.displayName = 'UserTableRow';

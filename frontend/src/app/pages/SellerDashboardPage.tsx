@@ -26,69 +26,6 @@ interface DashboardTender {
   buyers: number;
 }
 
-const mockTenders: Tender[] = [
-  {
-    id: 'TND-2024-001',
-    title: 'Office Stationery & Supplies Bundle',
-    category: 'Office Supplies',
-    price: '₹1,24,500',
-    uploadedDate: '2024-06-10',
-    status: 'approved',
-    buyers: 14,
-    views: 312,
-  },
-  {
-    id: 'TND-2024-002',
-    title: 'Industrial Safety Equipment Set',
-    category: 'Safety & PPE',
-    price: '₹3,87,000',
-    uploadedDate: '2024-06-15',
-    status: 'sold',
-    buyers: 32,
-    views: 876,
-  },
-  {
-    id: 'TND-2024-003',
-    title: 'IT Hardware — Laptops & Monitors',
-    category: 'Electronics',
-    price: '₹8,50,000',
-    uploadedDate: '2024-06-18',
-    status: 'pending',
-    buyers: 0,
-    views: 45,
-  },
-  {
-    id: 'TND-2024-004',
-    title: 'Water Purification Units (x20)',
-    category: 'Infrastructure',
-    price: '₹2,10,000',
-    uploadedDate: '2024-06-20',
-    status: 'under_review',
-    buyers: 0,
-    views: 88,
-  },
-  {
-    id: 'TND-2024-005',
-    title: 'Medical Consumables — Gloves & Masks',
-    category: 'Medical',
-    price: '₹55,200',
-    uploadedDate: '2024-06-22',
-    status: 'rejected',
-    buyers: 0,
-    views: 23,
-  },
-  {
-    id: 'TND-2024-006',
-    title: 'Electrical Wiring Accessories Lot',
-    category: 'Electrical',
-    price: '₹1,92,400',
-    uploadedDate: '2024-06-24',
-    status: 'approved',
-    buyers: 7,
-    views: 154,
-  },
-];
-
 const statusMeta: Record<TenderStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   approved: { label: 'Approved', color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle size={14} /> },
   published: { label: 'Published', color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle size={14} /> },

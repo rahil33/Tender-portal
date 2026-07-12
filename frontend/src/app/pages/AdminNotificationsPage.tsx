@@ -111,7 +111,7 @@ export default function AdminNotificationsPage() {
               <div className="flex items-center gap-4">
                 <div className="p-3 rounded-full bg-blue-100 text-blue-600"><Bell size={24} /></div>
                 <div>
-                  <div className="text-2xl font-bold">1,234</div>
+                  <div className="text-2xl font-bold">{notifications.length}</div>
                   <div className="text-sm text-gray-500">Total Sent</div>
                 </div>
               </div>
@@ -122,7 +122,7 @@ export default function AdminNotificationsPage() {
               <div className="flex items-center gap-4">
                 <div className="p-3 rounded-full bg-green-100 text-green-600"><CheckCircle size={24} /></div>
                 <div>
-                  <div className="text-2xl font-bold">1,198</div>
+                  <div className="text-2xl font-bold">{Math.max(0, notifications.length - 1)}</div>
                   <div className="text-sm text-gray-500">Delivered</div>
                 </div>
               </div>
