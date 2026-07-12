@@ -43,7 +43,6 @@ const organizationSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
-      index: true,
     },
     panNumber: {
       type: String,

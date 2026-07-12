@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const env = require('./env');
+const env = require('../config/env');
 
 /**
  * Secure random token generator
