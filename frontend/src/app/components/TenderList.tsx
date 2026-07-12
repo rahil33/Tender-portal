@@ -102,11 +102,36 @@ export const TenderList: React.FC = () => {
 
         {/* Quick Filter Bar */}
         <div className="flex flex-wrap items-center gap-3 mb-8">
-          <button className="px-5 py-2 rounded-full text-sm font-bold cursor-pointer bg-[#111827] text-white hover:bg-[#2563EB] transition-colors shadow-sm">All Sectors</button>
-          <button className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827]">Construction</button>
-          <button className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827]">IT & Telecom</button>
-          <button className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827]">Healthcare</button>
-          <button className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827]">Defence</button>
+          <Link
+            to="/tenders"
+            className="px-5 py-2 rounded-full text-sm font-bold cursor-pointer bg-[#111827] text-white hover:bg-[#2563EB] transition-colors shadow-sm inline-block"
+          >
+            All Sectors
+          </Link>
+          <Link
+            to="/tenders?category=construction"
+            className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827] inline-block"
+          >
+            Construction
+          </Link>
+          <Link
+            to="/tenders?category=it-telecom"
+            className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827] inline-block"
+          >
+            IT & Telecom
+          </Link>
+          <Link
+            to="/tenders?category=healthcare"
+            className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827] inline-block"
+          >
+            Healthcare
+          </Link>
+          <Link
+            to="/tenders?category=defence"
+            className="px-5 py-2 rounded-full text-sm font-bold transition-all cursor-pointer bg-white border border-[#E5E7EB] text-[#6B7280] hover:text-[#111827] hover:border-[#111827] inline-block"
+          >
+            Defence
+          </Link>
         </div>
 
         {/* Table Layout for Desktop */}

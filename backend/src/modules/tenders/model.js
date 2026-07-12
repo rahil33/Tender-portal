@@ -283,6 +283,34 @@ tenderSchema.index({ createdBy: 1, isDeleted: 0 });
 tenderSchema.index({ category: 1, status: 1 });
 tenderSchema.index({ location: 1, isDeleted: 0 });
 tenderSchema.index({ 'budget.estimated': 1, isDeleted: 0 });
+tenderSchema.index({ status: 1, category: 1, isArchived: 1, isDeleted: 1 });
+tenderSchema.index({ issuingOrganization: 1, status: 1, isDeleted: 1 });
+tenderSchema.index({ submissionDeadline: 1, status: 1, isDeleted: 1 });
+
+tenderSchema.pre('deleteOne', async function(next) {
+  try {
+    const tender = await this.model.findOne(this.getFilter());
+    if (tender) {
+      await Promise.all([
+        this.model.constructor.model('Bid').updateMany(
+          { tenderId: tender._id },
+          { isDeleted: true, deletedAt: new Date() }
+        ),
+        this.model.constructor.model('Document').updateMany(
+          { tenderId: tender._id },
+          { isDeleted: true, deletedAt: new Date() }
+        ),
+        this.model.constructor.model('Bookmark').updateMany(
+          { tenderId: tender._id },
+          { isDeleted: true }
+        ),
+      ]);
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 tenderSchema.methods.addAuditTrail = function(action, performedBy, performedByEmail, details = null, changes = null) {
   this.auditTrail.push({

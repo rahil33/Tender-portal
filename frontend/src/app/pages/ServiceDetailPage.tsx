@@ -152,6 +152,216 @@ const servicesData: Record<string, any> = {
     ],
     pricing: '₹5,000 - ₹15,000 per session',
     duration: '2-4 hours per session'
+  },
+  'iso-certification': {
+    title: 'ISO Certification',
+    subtitle: 'International Standards Organization Certification',
+    description: 'Enhance your brand value and operational efficiency with ISO 9001, 14001, 27001, and 45001 certifications. Our experts guide you through the entire certification process.',
+    features: [
+      'ISO 9001 (Quality Management)',
+      'ISO 14001 (Environmental Management)',
+      'ISO 27001 (Information Security)',
+      'ISO 45001 (Occupational Health & Safety)',
+      'Documentation support',
+      'Internal audit training'
+    ],
+    benefits: [
+      'Enhanced credibility and trust',
+      'Improved operational efficiency',
+      'Better customer satisfaction',
+      'Competitive advantage in tenders',
+      'International recognition',
+      'Continuous improvement culture'
+    ],
+    process: [
+      { step: '1', title: 'Gap Analysis', desc: 'Assess current systems against ISO requirements' },
+      { step: '2', title: 'Documentation', desc: 'Prepare required quality manuals and procedures' },
+      { step: '3', title: 'Implementation', desc: 'Implement the management system' },
+      { step: '4', title: 'Internal Audit', desc: 'Conduct internal audits and management review' },
+      { step: '5', title: 'Certification Audit', desc: 'External audit by certification body' }
+    ],
+    pricing: '₹25,000 - ₹75,000',
+    duration: '45-60 business days'
+  },
+  'msme-udyam': {
+    title: 'MSME / Udyam Registration',
+    subtitle: 'Micro, Small & Medium Enterprise Registration',
+    description: 'Avail government subsidies, easier credit, and protection against delayed payments with Udyam registration. Get your MSME certificate online with expert assistance.',
+    features: [
+      'Udyam registration certificate',
+      'MSME classification guidance',
+      'Subsidy application support',
+      'Credit linkage assistance',
+      'Delayed payment protection',
+      'Priority sector lending benefits'
+    ],
+    benefits: [
+      'Access to government schemes',
+      'Lower interest rates on loans',
+      'Protection against payment delays',
+      'Preference in government tenders',
+      'Tax benefits and exemptions',
+      'Easy business credit availability'
+    ],
+    process: [
+      { step: '1', title: 'Document Collection', desc: 'Gather Aadhaar, PAN, and business documents' },
+      { step: '2', title: 'Application Filing', desc: 'Submit Udyam registration application' },
+      { step: '3', title: 'Verification', desc: 'Government verification of details' },
+      { step: '4', title: 'Certificate Issuance', desc: 'Receive Udyam registration certificate' },
+      { step: '5', title: 'Post-Registration', desc: 'Guidance on availing benefits' }
+    ],
+    pricing: '₹2,000 - ₹5,000',
+    duration: '3-5 business days'
+  },
+  'nsic-registration': {
+    title: 'NSIC Registration',
+    subtitle: 'National Small Industries Corporation',
+    description: 'Get exemption from Earnest Money Deposit (EMD) and participate in government stores purchase program. NSIC registration opens doors to exclusive government opportunities.',
+    features: [
+      'EMD exemption certificate',
+      'Government tender eligibility',
+      'Raw material assistance',
+      'Marketing support',
+      'Technology upgradation aid',
+      'Export promotion benefits'
+    ],
+    benefits: [
+      'Exemption from EMD in tenders',
+      'Access to government procurement',
+      'Subsidized raw materials',
+      'Marketing and export support',
+      'Financial assistance programs',
+      'Preference in price bids'
+    ],
+    process: [
+      { step: '1', title: 'Eligibility Check', desc: 'Verify MSME status and business type' },
+      { step: '2', title: 'Application Submission', desc: 'File NSIC registration application' },
+      { step: '3', title: 'Document Verification', desc: 'NSIC verifies all submitted documents' },
+      { step: '4', title: 'Inspection', desc: 'Physical inspection of business premises' },
+      { step: '5', title: 'Registration Certificate', desc: 'Receive NSIC registration certificate' }
+    ],
+    pricing: '₹8,000 - ₹15,000',
+    duration: '15-20 business days'
+  },
+  'digital-signature': {
+    title: 'Digital Signature Certificate (DSC)',
+    subtitle: 'Class 3 Digital Signature for E-Tendering',
+    description: 'Class 3 DSC for e-tendering, e-filing of Income Tax, ROC, and GST. Secure your online transactions with legally valid digital signatures.',
+    features: [
+      'Class 3 Digital Signature',
+      'E-tendering compatibility',
+      'Income Tax e-filing support',
+      'ROC and GST filing ready',
+      'USB token included',
+      '2-year validity'
+    ],
+    benefits: [
+      'Legally valid under IT Act',
+      'Secure online transactions',
+      'Required for e-tendering',
+      'Fast and paperless filing',
+      'Multiple uses across platforms',
+      'Tamper-proof documentation'
+    ],
+    process: [
+      { step: '1', title: 'Application', desc: 'Submit DSC application form' },
+      { step: '2', title: 'Document Verification', desc: 'Verify identity and address proofs' },
+      { step: '3', title: 'Biometric Authentication', desc: 'Complete Aadhaar-based verification' },
+      { step: '4', title: 'Token Generation', desc: 'DSC token is generated and dispatched' },
+      { step: '5', title: 'Installation Support', desc: 'Help with DSC driver installation' }
+    ],
+    pricing: '₹1,500 - ₹3,000',
+    duration: '1-2 business days'
+  },
+  'startup-india': {
+    title: 'Startup India Registration',
+    subtitle: 'DPIIT Recognition for Startups',
+    description: 'Get tax exemptions, access to government funds, and relaxed norms for public procurement. Register your startup under the Government of India flagship initiative.',
+    features: [
+      'DPIIT recognition certificate',
+      'Tax exemption application',
+      'IPR fast-track support',
+      'Government funding access',
+      'Tender relaxation benefits',
+      'Compliance support'
+    ],
+    benefits: [
+      '3-year income tax exemption',
+      'Access to ₹10,000 Cr fund',
+      'Fast-track patent examination',
+      'Exemption from EMD in tenders',
+      'Easier compliance norms',
+      'Networking opportunities'
+    ],
+    process: [
+      { step: '1', title: 'Eligibility Assessment', desc: 'Check if your business qualifies as startup' },
+      { step: '2', title: 'Document Preparation', desc: 'Prepare pitch deck and incorporation docs' },
+      { step: '3', title: 'Application Filing', desc: 'Submit application on Startup India portal' },
+      { step: '4', title: 'DPIIT Review', desc: 'Government reviews the application' },
+      { step: '5', title: 'Recognition Certificate', desc: 'Receive DPIIT recognition number' }
+    ],
+    pricing: '₹5,000 - ₹12,000',
+    duration: '7-10 business days'
+  },
+  'import-export-code': {
+    title: 'Import Export Code (IEC)',
+    subtitle: 'Mandatory Code for International Trade',
+    description: 'Essential 10-digit code for businesses looking to expand globally and engage in import/export. Get your IEC certificate with minimal documentation.',
+    features: [
+      'IEC code certificate',
+      'DGFT registration',
+      'Import-export documentation',
+      'Customs clearance support',
+      'Export license guidance',
+      'Lifetime validity'
+    ],
+    benefits: [
+      'Legal requirement for trade',
+      'Access to global markets',
+      'Export incentives and benefits',
+      'Easy customs clearance',
+      'Bank account for forex',
+      'No renewal required'
+    ],
+    process: [
+      { step: '1', title: 'Document Collection', desc: 'Gather PAN, Aadhaar, and bank details' },
+      { step: '2', title: 'Application Filing', desc: 'Submit IEC application to DGFT' },
+      { step: '3', title: 'Verification', desc: 'Government verifies applicant details' },
+      { step: '4', title: 'IEC Allotment', desc: 'Receive 10-digit IEC code' },
+      { step: '5', title: 'Certificate Download', desc: 'Download IEC certificate from DGFT portal' }
+    ],
+    pricing: '₹2,500 - ₹5,000',
+    duration: '5-7 business days'
+  },
+  'gst-registration': {
+    title: 'GST Registration',
+    subtitle: 'Goods and Services Tax Registration',
+    description: 'Complete assistance in obtaining GSTIN and maintaining periodic compliance for your business. Start your business operations with proper tax registration.',
+    features: [
+      'GSTIN registration',
+      'GST return filing support',
+      'HSN code classification',
+      'Input tax credit guidance',
+      'Composition scheme advisory',
+      'Compliance calendar'
+    ],
+    benefits: [
+      'Legal compliance',
+      'Inter-state business operations',
+      'Input tax credit benefits',
+      'Online business eligibility',
+      'Bank account opening',
+      'Brand credibility'
+    ],
+    process: [
+      { step: '1', title: 'Document Collection', desc: 'Gather PAN, Aadhaar, address proofs' },
+      { step: '2', title: 'Application Filing', desc: 'Submit GST REG-01 application' },
+      { step: '3', title: 'Verification', desc: 'Tax officer verifies application' },
+      { step: '4', title: 'Site Inspection', desc: 'Physical verification of business address' },
+      { step: '5', title: 'GSTIN Allotment', desc: 'Receive GSTIN certificate' }
+    ],
+    pricing: '₹1,500 - ₹4,000',
+    duration: '7-15 business days'
   }
 };
 
@@ -191,9 +401,9 @@ export default function ServiceDetailPage() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-8">
           {/* Left Column - Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 pb-6">
             {/* Description */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
               <h2 className="text-2xl font-bold text-[#0B3D91] mb-4">Overview</h2>
@@ -246,9 +456,9 @@ export default function ServiceDetailPage() {
           </div>
 
           {/* Right Column - Sidebar */}
-          <div className="space-y-6">
+          <div className="space-y-6 lg:sticky lg:top-[96px] lg:self-start">
             {/* Get Started Today Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 lg:sticky lg:top-[96px]">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h3 className="text-lg font-bold text-[#0B3D91] mb-5 pb-3 border-b border-gray-100">
                 Get Started Today
               </h3>

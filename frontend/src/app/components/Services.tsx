@@ -168,15 +168,16 @@ export const Pricing: React.FC = () => {
                   </li>
                 ))}
               </ul>
-              <button 
-                className={`w-full py-3 rounded-lg font-bold transition-all cursor-pointer ${
+              <Link
+                to="/contact"
+                className={`w-full block text-center py-3 rounded-lg font-bold transition-all ${
                   plan.popular
                     ? 'bg-[#111827] text-white hover:bg-[#2563EB] shadow-md'
                     : 'bg-white border border-[#E5E7EB] text-[#111827] hover:border-[#111827]'
                 }`}
               >
                 {plan.cta}
-              </button>
+              </Link>
             </div>
           ))}
         </div>

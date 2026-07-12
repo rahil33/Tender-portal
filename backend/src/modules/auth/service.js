@@ -31,6 +31,13 @@ class AuthService {
     });
   }
 
+  async _invalidateAllSessions(userId) {
+    await Session.updateMany(
+      { userId, isActive: true },
+      { isActive: false }
+    );
+  }
+
   async register(userData, req) {
     try {
       const { fullName, companyName, phone, email, password, role } = userData;
@@ -116,6 +123,19 @@ class AuthService {
       };
     } catch (error) {
       throw new Error(`Failed to logout: ${error.message}`);
+    }
+  }
+
+  async invalidateUserSessions(userId) {
+    try {
+      await this._invalidateAllSessions(userId);
+
+      return {
+        success: true,
+        message: 'All sessions invalidated successfully.',
+      };
+    } catch (error) {
+      throw new Error(`Failed to invalidate sessions: ${error.message}`);
     }
   }
 

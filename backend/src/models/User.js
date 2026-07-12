@@ -40,13 +40,15 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
+userSchema.index({ email: 1, isActive: 1 });
+userSchema.index({ role: 1, isActive: 1, createdAt: -1 });
+userSchema.index({ phone: 1 }, { sparse: true });
+
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   this.password = await bcryptjs.hash(this.password, 10);
 });
 
-// Method to compare password on login
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcryptjs.compare(candidatePassword, this.password);
 };

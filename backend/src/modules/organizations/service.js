@@ -76,9 +76,9 @@ class OrganizationsService {
 
   async getOrganizationById(organizationId) {
     try {
-      const organization = await Organization.findById(organizationId).lean();
+      const organization = await Organization.findOne({ _id: organizationId, isDeleted: false, isActive: true }).lean();
 
-      if (!organization || !organization.isActive) {
+      if (!organization) {
         throw new Error('Organization not found');
       }
 

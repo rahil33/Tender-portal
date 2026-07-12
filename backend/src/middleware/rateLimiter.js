@@ -21,6 +21,7 @@ const authLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: false,
 });
 
 const apiLimiter = rateLimit({
@@ -29,6 +30,17 @@ const apiLimiter = rateLimit({
   message: {
     success: false,
     message: 'Too many API requests, please try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  message: {
+    success: false,
+    message: 'Too many admin requests, please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -62,6 +74,7 @@ module.exports = {
   generalLimiter,
   authLimiter,
   apiLimiter,
+  adminLimiter,
   strictLimiter,
   createCustomLimiter,
 };

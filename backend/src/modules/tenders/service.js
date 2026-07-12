@@ -106,7 +106,7 @@ class TendersService {
 
   async getTenderById(tenderId) {
     try {
-      const tender = await Tender.findById(tenderId).lean();
+      const tender = await Tender.findOne({ _id: tenderId, isDeleted: false }).lean();
 
       if (!tender) {
         throw new Error('Tender not found');

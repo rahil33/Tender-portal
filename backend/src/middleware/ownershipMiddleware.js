@@ -1,5 +1,7 @@
 const { Bid } = require('../modules/bids/model');
 const { Tender } = require('../modules/tenders/model');
+const User = require('../models/User');
+const { Organization } = require('../modules/organizations/model');
 const logger = require('../config/logger');
 
 /**
@@ -207,9 +209,198 @@ const validateTenderStatus = async (req, res, next) => {
   }
 };
 
+/**
+ * Validate user profile ownership
+ * Only user can modify their own profile
+ */
+const validateUserOwnership = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const targetUserId = req.params?.userId;
+
+    if (!userId) {
+      logger.warn('User ID not available for ownership check');
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required',
+      });
+    }
+
+    if (!targetUserId) {
+      logger.warn('User ID not available for ownership check');
+      return res.status(400).json({
+        success: false,
+        message: 'User ID required',
+      });
+    }
+
+    // Allow admins to access any user profile
+    if (req.user?.role === 'admin') {
+      return next();
+    }
+
+    // Check if user is accessing their own profile
+    if (targetUserId !== userId) {
+      logger.warn(`Ownership validation failed: User ${userId} tried to access user ${targetUserId}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only modify your own profile',
+      });
+    }
+
+    req.userProfile = await User.findById(userId).select('-password');
+    next();
+  } catch (error) {
+    logger.error('User ownership validation error', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to validate ownership',
+    });
+  }
+};
+
+/**
+ * Validate organization membership and ownership
+ * Only organization members can access/modify the organization
+ */
+const validateOrganizationMembership = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const organizationId = req.params?.organizationId;
+
+    if (!userId) {
+      logger.warn('User ID not available for organization membership check');
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required',
+      });
+    }
+
+    if (!organizationId) {
+      logger.warn('Organization ID not available for membership check');
+      return res.status(400).json({
+        success: false,
+        message: 'Organization ID required',
+      });
+    }
+
+    // Allow admins to access any organization
+    if (req.user?.role === 'admin') {
+      return next();
+    }
+
+    const organization = await Organization.findById(organizationId);
+
+    if (!organization || organization.isDeleted) {
+      logger.warn(`Organization not found or deleted: ${organizationId}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Organization not found',
+      });
+    }
+
+    // Check if organization is active
+    if (!organization.isActive) {
+      logger.warn(`Organization is not active: ${organizationId}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Organization is not active',
+      });
+    }
+
+    // Check if user is a member of the organization
+    const isMember = organization.members?.some(
+      member => member.userId?.toString() === userId
+    );
+
+    // Allow organization creator
+    const isCreator = organization.createdBy?.toString() === userId;
+
+    if (!isMember && !isCreator) {
+      logger.warn(`User ${userId} is not a member of organization ${organizationId}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Organization membership required',
+      });
+    }
+
+    req.organization = organization;
+    next();
+  } catch (error) {
+    logger.error('Organization membership validation error', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to validate organization access',
+    });
+  }
+};
+
+/**
+ * Validate organization ownership for modifications
+ * Only organization creator or admin can modify/delete the organization
+ */
+const validateOrganizationOwnership = async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.userId;
+    const organizationId = req.params?.organizationId;
+
+    if (!userId) {
+      logger.warn('User ID not available for organization ownership check');
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required',
+      });
+    }
+
+    if (!organizationId) {
+      logger.warn('Organization ID not available for ownership check');
+      return res.status(400).json({
+        success: false,
+        message: 'Organization ID required',
+      });
+    }
+
+    // Allow admins to modify any organization
+    if (req.user?.role === 'admin') {
+      return next();
+    }
+
+    const organization = await Organization.findById(organizationId);
+
+    if (!organization || organization.isDeleted) {
+      logger.warn(`Organization not found or deleted: ${organizationId}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Organization not found',
+      });
+    }
+
+    // Check if user is the organization creator
+    if (organization.createdBy.toString() !== userId) {
+      logger.warn(`Organization ownership validation failed: User ${userId} is not creator of organization ${organizationId}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only modify organizations you created',
+      });
+    }
+
+    req.organization = organization;
+    next();
+  } catch (error) {
+    logger.error('Organization ownership validation error', { error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to validate organization ownership',
+    });
+  }
+};
+
 module.exports = {
   validateBidOwnership,
   validateTenderOwnership,
   validateBidDeadline,
   validateTenderStatus,
+  validateUserOwnership,
+  validateOrganizationMembership,
+  validateOrganizationOwnership,
 };

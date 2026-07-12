@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router';
 import { Award, ShieldCheck, FileCheck, Fingerprint, Rocket, Globe, Building2, ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -6,6 +7,7 @@ const CERTIFICATES = [
   {
     icon: Award,
     title: 'ISO Certification',
+    slug: 'iso-certification',
     desc: 'Enhance your brand value and operational efficiency with ISO 9001, 14001, 27001, and 45001 certifications.',
     type: 'International Standards',
     accent: '#111827',
@@ -13,6 +15,7 @@ const CERTIFICATES = [
   {
     icon: ShieldCheck,
     title: 'MSME / Udyam',
+    slug: 'msme-udyam',
     desc: 'Avail government subsidies, easier credit, and protection against delayed payments with Udyam registration.',
     type: 'Registration',
     accent: '#2563EB',
@@ -20,6 +23,7 @@ const CERTIFICATES = [
   {
     icon: FileCheck,
     title: 'NSIC Registration',
+    slug: 'nsic-registration',
     desc: 'Get exemption from Earnest Money Deposit (EMD) and participate in government stores purchase program.',
     type: 'Tender Benefits',
     accent: '#111827',
@@ -27,6 +31,7 @@ const CERTIFICATES = [
   {
     icon: Fingerprint,
     title: 'Digital Signature (DSC)',
+    slug: 'digital-signature',
     desc: 'Class 3 DSC for e-tendering, e-filing of Income Tax, ROC, and GST. Secure your online transactions.',
     type: 'Compliance',
     accent: '#2563EB',
@@ -34,6 +39,7 @@ const CERTIFICATES = [
   {
     icon: Rocket,
     title: 'Startup India',
+    slug: 'startup-india',
     desc: 'Get tax exemptions, access to government funds, and relaxed norms for public procurement.',
     type: 'Recognition',
     accent: '#111827',
@@ -41,6 +47,7 @@ const CERTIFICATES = [
   {
     icon: Globe,
     title: 'Import Export Code',
+    slug: 'import-export-code',
     desc: 'Essential 10-digit code for businesses looking to expand globally and engage in import/export.',
     type: 'Trade',
     accent: '#2563EB',
@@ -48,6 +55,7 @@ const CERTIFICATES = [
   {
     icon: Building2,
     title: 'GST Registration',
+    slug: 'gst-registration',
     desc: 'Complete assistance in obtaining GSTIN and maintaining periodic compliance for your business.',
     type: 'Taxation',
     accent: '#111827',
@@ -183,11 +191,12 @@ const CertificateCarousel: React.FC = () => {
                       transition={{ delay: 0.15 }}
                       className="mt-4 flex-shrink-0 relative z-10"
                     >
-                      <button
-                        className="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-xs font-bold transition-all duration-300 bg-white border border-[#E5E7EB] text-[#111827] hover:bg-[#F8FAFC] hover:border-[#111827] w-full justify-center"
+                      <Link
+                        to={`/services/${cert.slug}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-xs font-bold transition-all duration-300 bg-white border border-[#E5E7EB] text-[#111827] hover:bg-[#F8FAFC] hover:border-[#111827] w-full"
                       >
                         Learn More <ArrowRight size={14} />
-                      </button>
+                      </Link>
                     </motion.div>
                   )}
                 </div>
@@ -292,9 +301,12 @@ export const CertificateServices: React.FC = () => {
               Our consultants provide a free assessment of your business profile and suggest necessary certifications for your industry.
             </p>
           </div>
-          <button className="whitespace-nowrap px-8 py-4 font-bold rounded-lg transition-all duration-300 bg-[#111827] text-white hover:bg-[#2563EB] shadow-md relative z-10">
+          <Link
+            to="/contact"
+            className="whitespace-nowrap px-8 py-4 font-bold rounded-lg transition-all duration-300 bg-[#111827] text-white hover:bg-[#2563EB] shadow-md relative z-10 inline-block text-center"
+          >
             Get Certified Now
-          </button>
+          </Link>
         </div>
       </div>
     </section>

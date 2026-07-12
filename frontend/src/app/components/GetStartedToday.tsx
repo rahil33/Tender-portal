@@ -4,7 +4,7 @@ import { Clock, Award, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export const GetStartedToday: React.FC = () => {
   return (
-    <section className="py-20 relative overflow-hidden bg-white border-b border-[#E5E7EB]">
+    <section className="py-20 relative overflow-hidden bg-white border-t border-[#E5E7EB]">
       {/* Decorative elements */}
       <div
         className="absolute inset-0 pointer-events-none opacity-50"

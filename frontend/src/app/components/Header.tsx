@@ -78,9 +78,6 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
             >
               <Linkedin size={15} />
             </a>
-            <a href="#" aria-label="Facebook" className="hover:text-blue-600 transition-colors"><Facebook size={15} /></a>
-            <a href="#" aria-label="Twitter" className="hover:text-blue-400 transition-colors"><Twitter size={15} /></a>
-            <a href="#" aria-label="Instagram" className="hover:text-pink-600 transition-colors"><Instagram size={15} /></a>
           </div>
         </div>
       </div>

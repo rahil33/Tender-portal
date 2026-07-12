@@ -250,6 +250,10 @@ bidSchema.index({ tenderId: 1, vendorId: 1, isDeleted: 1 });
 bidSchema.index({ status: 1, isDeleted: 1 });
 bidSchema.index({ submittedAt: 1, isDeleted: 1 });
 bidSchema.index({ bidAmount: 1, isDeleted: 1 });
+bidSchema.index({ tenderId: 1, status: 1, isDeleted: 1 });
+bidSchema.index({ vendorId: 1, status: 1, submittedAt: -1 });
+bidSchema.index({ evaluationStatus: 1, tenderId: 1, isDeleted: 1 });
+bidSchema.index({ tenderId: 1, vendorId: 1 }, { unique: true, partialFilterExpression: { isDeleted: false, status: { $ne: 'withdrawn' } } });
 
 module.exports = {
   Bid: mongoose.model('Bid', bidSchema),
