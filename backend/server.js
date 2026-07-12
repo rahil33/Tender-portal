@@ -22,6 +22,7 @@ const healthRoutes = require('./src/modules/health/routes');
 const docsRoutes = require('./src/modules/docs/routes');
 const servicesRoutes = require('./src/modules/services/routes');
 const blogRoutes = require('./src/modules/blog/routes');
+const bookmarksRoutes = require('./src/modules/bookmarks/routes');
 const requestLogger = require('./src/middleware/requestLogger');
 const notFoundHandler = require('./src/middleware/notFoundHandler');
 const { errorHandler } = require('./src/middleware/errorHandler');
@@ -107,6 +108,7 @@ app.get('/', (req, res) => {
       faq: '/api/faq',
       services: '/api/services',
       blog: '/api/blog',
+      bookmarks: '/api/bookmarks',
     },
     documentation: '/api/docs',
   });
@@ -211,6 +213,12 @@ app.use('/api/services', servicesRoutes);
  * All routes are prefixed with /api/blog
  */
 app.use('/api/blog', blogRoutes);
+
+/**
+ * Bookmarks Module Routes
+ * All routes are prefixed with /api/bookmarks
+ */
+app.use('/api/bookmarks', bookmarksRoutes);
 
 // ─── ERROR HANDLING ───────────────────────────────────────────────────
 /**

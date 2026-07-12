@@ -20,6 +20,7 @@ import SellerPage from "./pages/SellerPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import TenderUploadPage from "./pages/TenderUploadPage";
 import BuyerDashboardPage from "./pages/BuyerDashboardPage";
+import MyBidsPage from "./pages/MyBidsPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth } from "../contexts/AuthContext";
@@ -75,6 +76,14 @@ export const router = createBrowserRouter([
         element: (
           <ProtectedRoute requiredRoles={['buyer']}>
             <BuyerDashboardPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "bids/my-bids", 
+        element: (
+          <ProtectedRoute requiredRoles={['buyer', 'vendor']}>
+            <MyBidsPage />
           </ProtectedRoute>
         ) 
       },

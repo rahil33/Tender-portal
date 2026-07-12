@@ -304,6 +304,21 @@ class BidsController {
       );
     }
   }
+
+  async getBuyerAnalytics(req, res) {
+    try {
+      const vendorId = req.user?.id || req.user?.userId;
+      const result = await bidsService.getBuyerAnalytics(vendorId);
+
+      return res.status(200).json(
+        new BidsResponseDTO(result.success, 'Buyer analytics retrieved', result.data)
+      );
+    } catch (error) {
+      return res.status(500).json(
+        new BidsResponseDTO(false, 'Failed to get buyer analytics', null, [error.message])
+      );
+    }
+  }
 }
 
 module.exports = new BidsController();

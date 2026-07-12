@@ -172,6 +172,26 @@ class NotificationService {
       logger.info('Bid received notification', data);
     });
 
+    this.subscribe('bid:submitted', async (data) => {
+      logger.info('Bid submitted notification', data);
+    });
+
+    this.subscribe('bid:evaluated', async (data) => {
+      logger.info('Bid evaluated notification', data);
+    });
+
+    this.subscribe('bid:accepted', async (data) => {
+      logger.info('Bid accepted notification', data);
+    });
+
+    this.subscribe('bid:rejected', async (data) => {
+      logger.info('Bid rejected notification', data);
+    });
+
+    this.subscribe('bid:withdrawn', async (data) => {
+      logger.info('Bid withdrawn notification', data);
+    });
+
     this.subscribe('deadline:reminder', async (data) => {
       logger.info('Deadline reminder notification', data);
     });
@@ -243,6 +263,59 @@ class NotificationService {
       title,
       deadline,
       hoursRemaining,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async sendBidSubmittedNotification(bidId, bidNumber, tenderId, tenderTitle, vendorId, bidAmount) {
+    return this.notify('bid:submitted', {
+      bidId,
+      bidNumber,
+      tenderId,
+      tenderTitle,
+      vendorId,
+      bidAmount,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async sendBidEvaluatedNotification(bidId, bidNumber, tenderTitle, totalScore, isRecommended) {
+    return this.notify('bid:evaluated', {
+      bidId,
+      bidNumber,
+      tenderTitle,
+      totalScore,
+      isRecommended,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async sendBidAcceptedNotification(bidId, bidNumber, tenderTitle, vendorName) {
+    return this.notify('bid:accepted', {
+      bidId,
+      bidNumber,
+      tenderTitle,
+      vendorName,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async sendBidRejectedNotification(bidId, bidNumber, tenderTitle, reason) {
+    return this.notify('bid:rejected', {
+      bidId,
+      bidNumber,
+      tenderTitle,
+      reason,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async sendBidWithdrawnNotification(bidId, bidNumber, tenderTitle, reason) {
+    return this.notify('bid:withdrawn', {
+      bidId,
+      bidNumber,
+      tenderTitle,
+      reason,
       timestamp: new Date().toISOString(),
     });
   }
