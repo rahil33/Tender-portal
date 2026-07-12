@@ -40,32 +40,33 @@ class ApiService {
       (response: AxiosResponse<ApiResponse>) => response,
       (error: AxiosError<ApiResponse>) => {
         if (error.response?.status === 401) {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          window.location.href = '/';
+          console.error("401 Unauthorized", error.response.data);
+          //localStorage.removeItem('authToken');
+          //localStorage.removeItem('user');
+          //window.location.href = '/';
         }
         return Promise.reject(error);
       }
     );
   }
 
-  public get<T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  public get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
     return this.api.get(url, config);
   }
 
-  public post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  public post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
     return this.api.post(url, data, config);
   }
 
-  public put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  public put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
     return this.api.put(url, data, config);
   }
 
-  public delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  public delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
     return this.api.delete(url, config);
   }
 
-  public upload<T = any>(url: string, formData: FormData, config?: AxiosRequestConfig): Promise<ApiResponse<T>> {
+  public upload<T = any>(url: string, formData: FormData, config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<T>>> {
     return this.api.post(url, formData, {
       ...config,
       headers: {

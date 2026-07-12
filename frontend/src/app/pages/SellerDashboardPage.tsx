@@ -142,7 +142,7 @@ export default function SellerDashboardPage() {
   }, []);
 
   const fetchTenders = async () => {
-    if (!user?._id) {
+    if (!user?.id) {
       setLoading(false);
       return;
     }
@@ -151,7 +151,7 @@ export default function SellerDashboardPage() {
       const response = await tenderService.getAllTenders({
         page: 1,
         limit: 50,
-        createdBy: user._id,
+        createdBy: user.id,
       });
       setTenders(response.data.data.map((t: Tender) => ({
         _id: t._id,

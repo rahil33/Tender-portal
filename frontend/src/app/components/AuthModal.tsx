@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User, Phone, Building } from 'lucide-react';
+import { X, Mail, Lock, User, Phone, Building, Briefcase, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { LoadingSpinner } from '../../components/Loading';
+import { useNavigate } from 'react-router';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -12,16 +13,20 @@ interface AuthModalProps {
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: initialMode }) => {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const { login, register, isLoading } = useAuth();
+  const { login, register, isLoading, user, isAuthenticated } = useAuth();
   const { success, error: showError } = useNotification();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '',
     companyName: '',
     phone: '',
     email: '',
     password: '',
+    role: 'vendor' as 'vendor' | 'buyer',
   });
   const [formError, setFormError] = useState('');
+
+  console.log('[AuthModal] Render:', { isOpen, mode, user, isAuthenticated });
 
   React.useEffect(() => {
     setMode(initialMode);
@@ -31,11 +36,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: ini
       phone: '',
       email: '',
       password: '',
+      role: 'vendor',
     });
     setFormError('');
   }, [initialMode, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleRedirect = (role: string) => {
+    switch (role) {
+      case 'buyer':
+        navigate('/buyer/dashboard');
+        break;
+      case 'vendor':
+        navigate('/seller/dashboard');
+        break;
+      case 'admin':
+        navigate('/admin/dashboard');
+        break;
+      default:
+        navigate('/');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,19 +65,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: ini
 
     try {
       if (mode === 'login') {
-        await login({ email: formData.email, password: formData.password });
+        console.log('=== AuthModal: Calling login() ===');
+        const loginResult = await login({ email: formData.email, password: formData.password });
+        console.log('=== AuthModal: login() completed ===');
+        console.log('Login result:', loginResult);
         success('Login successful!', 'Welcome back');
+        console.log('Closing modal...');
         onClose();
+        console.log('Modal closed');
       } else {
-        await register({
+        const result = await register({
           fullName: formData.fullName,
           email: formData.email,
           password: formData.password,
           companyName: formData.companyName,
           phone: formData.phone,
+          role: formData.role,
         });
         success('Registration successful!', 'Welcome to Phoenix Tender');
         onClose();
+        const userRole = result?.data?.user?.role || formData.role;
+        handleRedirect(userRole);
       }
     } catch (err: any) {
       const message = err.message || 'Operation failed';
@@ -82,9 +112,58 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: ini
 
         <h2 className="text-2xl font-bold text-foreground mb-6">{mode === 'login' ? 'Login' : 'Register'}</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
             <>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-3">Register As</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`relative flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    formData.role === 'vendor' 
+                      ? 'border-blue-600 bg-blue-50' 
+                      : 'border-border hover:border-gray-300'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="radio"
+                        name="role"
+                        value="vendor"
+                        checked={formData.role === 'vendor'}
+                        onChange={() => setFormData((prev) => ({ ...prev, role: 'vendor' }))}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <Briefcase className="w-5 h-5 text-gray-600" />
+                      <span className="font-semibold text-foreground">Seller</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-6">
+                      Publish tenders and manage procurement
+                    </p>
+                  </label>
+
+                  <label className={`relative flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    formData.role === 'buyer' 
+                      ? 'border-blue-600 bg-blue-50' 
+                      : 'border-border hover:border-gray-300'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="radio"
+                        name="role"
+                        value="buyer"
+                        checked={formData.role === 'buyer'}
+                        onChange={() => setFormData((prev) => ({ ...prev, role: 'buyer' }))}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <ShoppingCart className="w-5 h-5 text-gray-600" />
+                      <span className="font-semibold text-foreground">Buyer</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground pl-6">
+                      Browse tenders and submit bids
+                    </p>
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">Full Name</label>
                 <div className="relative">
@@ -161,9 +240,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, mode: ini
                 value={formData.password}
                 onChange={handleChange}
                 required
-                minLength={6}
+                minLength={8}
+                pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$"
                 className="w-full pl-10 pr-4 py-2 border-2 border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
-                placeholder="Enter your password (min 6 characters)"
+                placeholder="Min 8 chars: uppercase, lowercase, number, special char"
               />
             </div>
           </div>

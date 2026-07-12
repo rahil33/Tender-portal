@@ -5,9 +5,9 @@ const { AUTH_ERRORS, SESSION_EXPIRES_IN_DAYS } = require('./constants');
 const { LoginDTO, RegisterDTO, SessionDTO } = require('./dto');
 
 class AuthService {
-  _generateToken(userId, role) {
+  _generateToken(userId, role, email) {
     return jwt.sign(
-      { id: userId, role },
+      { id: userId, role, email },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
@@ -46,10 +46,10 @@ class AuthService {
         phone,
         email,
         password,
-        role: role === 'vendor' || role === 'evaluator' ? role : 'vendor',
+        role: role === 'vendor' || role === 'evaluator' || role === 'buyer' ? role : 'vendor',
       });
 
-      const token = this._generateToken(user._id, user.role);
+      const token = this._generateToken(user._id, user.role, user.email);
       await this._createSession(user._id, token, req);
       
 
@@ -82,7 +82,7 @@ class AuthService {
         throw new Error(AUTH_ERRORS.INVALID_CREDENTIALS);
       }
 
-      const token = this._generateToken(user._id, user.role);
+      const token = this._generateToken(user._id, user.role, user.email);
       await this._createSession(user._id, token, req);
 
       return {

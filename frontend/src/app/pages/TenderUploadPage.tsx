@@ -190,7 +190,7 @@ export default function TenderUploadPage() {
   };
 
   const submitTender = async () => {
-    if (!user?._id) {
+    if (!user?.id) {
       showError('You must be logged in to upload a tender');
       return;
     }

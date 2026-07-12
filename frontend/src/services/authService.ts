@@ -1,20 +1,23 @@
 import api from './api';
 
 export interface User {
-  _id: string;
+  id: string;
   fullName: string;
   email: string;
   role: 'admin' | 'vendor' | 'evaluator' | 'buyer';
   companyName?: string;
   phone?: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
-export interface AuthResponse {
-  token: string;
-  user: User;
+export interface AuthApiResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    token: string;
+    user: User;
+  };
+  errors?: string[];
+  timestamp?: string;
 }
 
 export interface RegisterData {
@@ -33,12 +36,17 @@ export interface LoginData {
 
 export const authService = {
   async register(data: RegisterData) {
-    const response = await api.post<AuthResponse>('/auth/register', data);
+    const response = await api.post<AuthApiResponse>('/auth/register', data);
     return response.data;
   },
 
   async login(data: LoginData) {
-    const response = await api.post<AuthResponse>('/auth/login', data);
+    const response = await api.post<AuthApiResponse>('/auth/login', data);
+    console.log('=== authService.login() ===');
+    console.log('Full axios response:', JSON.stringify(response, null, 2));
+    console.log('response.data:', JSON.stringify(response.data, null, 2));
+    console.log('response.data.data:', response.data?.data);
+    console.log('response.data.user:', response.data?.user);
     return response.data;
   },
 

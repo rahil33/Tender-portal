@@ -16,6 +16,8 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  console.log('[Header] Render:', { user, isAuthenticated, token: localStorage.getItem('authToken') });
+
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
@@ -41,13 +43,16 @@ export const Header: React.FC<HeaderProps> = ({ onLoginClick, onRegisterClick })
   const getUserMenuItems = () => {
     if (!user) return [];
     
-    const items = [
-      { to: '/seller/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
-      { to: '/seller/upload', label: 'Upload Tender', icon: <UserPlus size={16} /> },
-    ];
-
-    if (user.role === 'admin') {
-      items.push({ to: '/admin', label: 'Admin Panel', icon: <Settings size={16} /> });
+    const items = [];
+    
+    // Role-based dashboard links
+    if (user.role === 'vendor') {
+      items.push({ to: '/seller/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> });
+      items.push({ to: '/seller/upload', label: 'Upload Tender', icon: <UserPlus size={16} /> });
+    } else if (user.role === 'buyer') {
+      items.push({ to: '/buyer/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> });
+    } else if (user.role === 'admin') {
+      items.push({ to: '/admin/dashboard', label: 'Admin Panel', icon: <Settings size={16} /> });
     }
 
     return items;

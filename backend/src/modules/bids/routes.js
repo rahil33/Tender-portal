@@ -1,41 +1,48 @@
 const express = require('express');
 const bidsController = require('./controller');
 const bidsValidators = require('./validator');
-const { protect } = require('../../middleware/authMiddleware');
+const { protect, authorize } = require('../../middleware/authMiddleware');
+const { ROLES } = require('../auth/constants');
 
 const router = express.Router();
 
+/**
+ * Bid Routes - All require authentication
+ * Buyers: can create bids, view own bids
+ * Vendors: can view bids on their tenders
+ * Admin/Evaluator: can view all bids, evaluate bids
+ */
 router.use(protect);
 
 /**
  * Bid CRUD Routes
  */
-router.post('/', bidsValidators.createBid, bidsController.createBid);
-router.get('/', bidsValidators.getAllBids, bidsController.getAllBids);
-router.get('/search', bidsValidators.searchBids, bidsController.searchBids);
-router.get('/statistics', bidsController.getBidStatistics);
-router.get('/vendor/:vendorId', bidsController.getVendorBids);
-router.get('/tender/:tenderId', bidsController.getTenderBids);
-router.get('/:bidId', bidsValidators.getBidById, bidsController.getBidById);
-router.put('/:bidId', bidsValidators.updateBid, bidsController.updateBid);
-router.delete('/:bidId', bidsValidators.deleteBid, bidsController.deleteBid);
+router.post('/', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.createBid, bidsController.createBid);
+router.get('/', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR, ROLES.VENDOR, ROLES.BUYER), bidsValidators.getAllBids, bidsController.getAllBids);
+router.get('/search', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR, ROLES.VENDOR, ROLES.BUYER), bidsValidators.searchBids, bidsController.searchBids);
+router.get('/statistics', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR), bidsController.getBidStatistics);
+router.get('/vendor/:vendorId', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR, ROLES.VENDOR), bidsController.getVendorBids);
+router.get('/tender/:tenderId', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR, ROLES.VENDOR), bidsController.getTenderBids);
+router.get('/:bidId', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR, ROLES.VENDOR, ROLES.BUYER), bidsValidators.getBidById, bidsController.getBidById);
+router.put('/:bidId', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.updateBid, bidsController.updateBid);
+router.delete('/:bidId', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.deleteBid, bidsController.deleteBid);
 
 /**
- * Bid Status Management Routes
+ * Bid Status Management Routes (buyer/vendor own bids)
  */
-router.put('/:bidId/submit', bidsValidators.submitBid, bidsController.submitBid);
-router.put('/:bidId/withdraw', bidsValidators.withdrawBid, bidsController.withdrawBid);
-router.put('/:bidId/status', bidsValidators.updateBidStatus, bidsController.updateBidStatus);
+router.put('/:bidId/submit', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.submitBid, bidsController.submitBid);
+router.put('/:bidId/withdraw', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.withdrawBid, bidsController.withdrawBid);
+router.put('/:bidId/status', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR), bidsValidators.updateBidStatus, bidsController.updateBidStatus);
 
 /**
- * Bid Evaluation Routes
+ * Bid Evaluation Routes (admin/evaluator only)
  */
-router.put('/:bidId/evaluate', bidsValidators.evaluateBid, bidsController.evaluateBid);
+router.put('/:bidId/evaluate', protect, authorize(ROLES.ADMIN, ROLES.EVALUATOR), bidsValidators.evaluateBid, bidsController.evaluateBid);
 
 /**
  * Bid Document Routes
  */
-router.post('/:bidId/documents', bidsValidators.addDocument, bidsController.addDocument);
-router.delete('/:bidId/documents/:documentId', bidsValidators.removeDocument, bidsController.removeDocument);
+router.post('/:bidId/documents', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.addDocument, bidsController.addDocument);
+router.delete('/:bidId/documents/:documentId', protect, authorize(ROLES.BUYER, ROLES.VENDOR), bidsValidators.removeDocument, bidsController.removeDocument);
 
 module.exports = router;

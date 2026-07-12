@@ -1,12 +1,14 @@
 const express = require('express');
 const adminController = require('./controller');
 const adminValidators = require('./validator');
-const { protect } = require('../../middleware/authMiddleware');
+const { protect, authorize } = require('../../middleware/authMiddleware');
+const { ROLES } = require('../auth/constants');
 
 const router = express.Router();
 
-// All admin routes require authentication
+// All admin routes require authentication AND admin role
 router.use(protect);
+router.use(authorize(ROLES.ADMIN));
 
 /**
  * Admin Dashboard Routes

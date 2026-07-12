@@ -6,6 +6,7 @@ const ROLES = {
   ADMIN: 'admin',
   VENDOR: 'vendor',
   EVALUATOR: 'evaluator',
+  BUYER: 'buyer',
 };
 
 const ROLES_VALUES = Object.values(ROLES);

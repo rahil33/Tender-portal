@@ -46,8 +46,10 @@ const authValidators = {
       .isString()
       .notEmpty()
       .withMessage('Password is required')
-      .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters'),
+      .isLength({ min: 8 })
+      .withMessage('Password must be at least 8 characters')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+      .withMessage('Password must contain uppercase, lowercase, number, and special character'),
     handleValidationErrors,
   ],
 

@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { Layout } from "./layout";
 import HomePage from "./pages/HomePage";
 import GemConsultantPage from "./pages/GemConsultantPage";
@@ -19,7 +19,30 @@ import ReviewsPage from "./pages/ReviewsPage";
 import SellerPage from "./pages/SellerPage";
 import SellerDashboardPage from "./pages/SellerDashboardPage";
 import TenderUploadPage from "./pages/TenderUploadPage";
+import BuyerDashboardPage from "./pages/BuyerDashboardPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage";
 import ProtectedRoute from "../components/ProtectedRoute";
+import { useAuth } from "../contexts/AuthContext";
+
+// Role-based redirect component
+const DashboardRedirect = () => {
+  const { user, isAuthenticated } = useAuth();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+  
+  switch (user?.role) {
+    case 'buyer':
+      return <Navigate to="/buyer/dashboard" replace />;
+    case 'vendor':
+      return <Navigate to="/seller/dashboard" replace />;
+    case 'admin':
+      return <Navigate to="/admin/dashboard" replace />;
+    default:
+      return <Navigate to="/" replace />;
+  }
+};
 
 export const router = createBrowserRouter([
   {
@@ -42,22 +65,56 @@ export const router = createBrowserRouter([
       { path: "privacy", Component: PrivacyPage },
       { path: "terms", Component: TermsPage },
       { path: "seller", Component: SellerPage },
+      
+      // Dashboard Redirect - redirects based on role
+      { path: "dashboard", Component: DashboardRedirect },
+      
+      // Buyer Routes
+      { 
+        path: "buyer/dashboard", 
+        element: (
+          <ProtectedRoute requiredRoles={['buyer']}>
+            <BuyerDashboardPage />
+          </ProtectedRoute>
+        ) 
+      },
+      
+      // Seller Routes
       { 
         path: "seller/dashboard", 
-        Component: (
-          <ProtectedRoute requiredRoles={['vendor', 'admin', 'buyer']}>
+        element: (
+          <ProtectedRoute requiredRoles={['vendor']}>
             <SellerDashboardPage />
           </ProtectedRoute>
         ) 
       },
       { 
         path: "seller/upload", 
-        Component: (
+        element: (
           <ProtectedRoute requiredRoles={['vendor', 'admin']}>
             <TenderUploadPage />
           </ProtectedRoute>
         ) 
       },
+      
+      // Admin Routes
+      { 
+        path: "admin/dashboard", 
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminDashboardPage />
+          </ProtectedRoute>
+        ) 
+      },
+      { 
+        path: "admin", 
+        element: (
+          <ProtectedRoute requiredRoles={['admin']}>
+            <AdminDashboardPage />
+          </ProtectedRoute>
+        ) 
+      },
+      
       { path: "*", Component: NotFoundPage },
     ],
   },
