@@ -35,7 +35,8 @@ class TendersController {
   async updateTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const result = await tendersService.updateTender(tenderId, req.body);
+      const userId = req.user?.id || req.user?.userId;
+      const result = await tendersService.updateTender(tenderId, userId, req.body);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)
@@ -50,7 +51,8 @@ class TendersController {
   async deleteTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const result = await tendersService.deleteTender(tenderId);
+      const userId = req.user?.id || req.user?.userId;
+      const result = await tendersService.deleteTender(tenderId, userId);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message)
@@ -123,8 +125,9 @@ class TendersController {
   async publishTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const publishedBy = req.user?.id || req.user?.userId;
-      const result = await tendersService.publishTender(tenderId, publishedBy);
+      const userId = req.user?.id || req.user?.userId;
+      const publishedBy = userId;
+      const result = await tendersService.publishTender(tenderId, userId, publishedBy);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)
@@ -139,7 +142,8 @@ class TendersController {
   async unpublishTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const result = await tendersService.unpublishTender(tenderId);
+      const userId = req.user?.id || req.user?.userId;
+      const result = await tendersService.unpublishTender(tenderId, userId);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)
@@ -154,7 +158,8 @@ class TendersController {
   async closeTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const result = await tendersService.closeTender(tenderId);
+      const userId = req.user?.id || req.user?.userId;
+      const result = await tendersService.closeTender(tenderId, userId);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)
@@ -166,11 +171,29 @@ class TendersController {
     }
   }
 
+  async awardTender(req, res) {
+    try {
+      const { tenderId } = req.params;
+      const userId = req.user?.id || req.user?.userId;
+      const { awardedToBidId } = req.body;
+      const result = await tendersService.awardTender(tenderId, userId, awardedToBidId);
+
+      return res.status(200).json(
+        new TendersResponseDTO(result.success, result.message, result.data)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new TendersResponseDTO(false, 'Failed to award tender', null, [error.message])
+      );
+    }
+  }
+
   async cancelTender(req, res) {
     try {
       const { tenderId } = req.params;
+      const userId = req.user?.id || req.user?.userId;
       const { cancellationReason } = req.body;
-      const result = await tendersService.cancelTender(tenderId, cancellationReason);
+      const result = await tendersService.cancelTender(tenderId, userId, cancellationReason);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)
@@ -185,7 +208,8 @@ class TendersController {
   async archiveTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const result = await tendersService.archiveTender(tenderId);
+      const userId = req.user?.id || req.user?.userId;
+      const result = await tendersService.archiveTender(tenderId, userId);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)
@@ -200,7 +224,8 @@ class TendersController {
   async unarchiveTender(req, res) {
     try {
       const { tenderId } = req.params;
-      const result = await tendersService.unarchiveTender(tenderId);
+      const userId = req.user?.id || req.user?.userId;
+      const result = await tendersService.unarchiveTender(tenderId, userId);
 
       return res.status(200).json(
         new TendersResponseDTO(result.success, result.message, result.data)

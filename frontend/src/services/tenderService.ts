@@ -7,7 +7,7 @@ export interface Tender {
   slug: string;
   description: string;
   category: string;
-  status: 'draft' | 'published' | 'closed' | 'cancelled';
+  status: 'draft' | 'published' | 'open' | 'closed' | 'awarded' | 'cancelled';
   visibility: 'public' | 'restricted' | 'private';
   budget: {
     estimated?: number;
@@ -25,16 +25,33 @@ export interface Tender {
   publishedBy?: string;
   closedAt?: string;
   cancelledAt?: string;
+  awardedAt?: string;
+  awardedTo?: string;
   cancellationReason?: string;
   isArchived: boolean;
   archivedAt?: string;
+  isDeleted: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
   tags: string[];
   location?: string;
+  department?: string;
+  tenderType?: 'domestic' | 'international' | 'government' | 'private';
+  gstRate?: number;
   contactPerson?: {
     name?: string;
     email?: string;
     phone?: string;
   };
+  views: number;
+  auditTrail: {
+    action: string;
+    performedBy?: string;
+    performedByEmail?: string;
+    timestamp: string;
+    details?: string;
+    changes?: any;
+  }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +66,11 @@ export interface TenderFilters {
   search?: string;
   createdBy?: string;
   issuingOrganization?: string;
+  location?: string;
+  minBudget?: number;
+  maxBudget?: number;
+  closingDateFrom?: string;
+  closingDateTo?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
@@ -67,6 +89,9 @@ export interface CreateTenderData {
   };
   visibility?: 'public' | 'restricted' | 'private';
   location?: string;
+  department?: string;
+  tenderType?: 'domestic' | 'international' | 'government' | 'private';
+  gstRate?: number;
   tags?: string[];
   contactPerson?: {
     name?: string;
@@ -134,6 +159,11 @@ export const tenderService = {
     return response.data;
   },
 
+  async awardTender(tenderId: string, awardedToBidId: string) {
+    const response = await api.put(`/tenders/${tenderId}/award`, { awardedToBidId });
+    return response.data;
+  },
+
   async archiveTender(tenderId: string) {
     const response = await api.put(`/tenders/${tenderId}/archive`);
     return response.data;
@@ -141,6 +171,11 @@ export const tenderService = {
 
   async unarchiveTender(tenderId: string) {
     const response = await api.put(`/tenders/${tenderId}/unarchive`);
+    return response.data;
+  },
+
+  async restoreTender(tenderId: string) {
+    const response = await api.put(`/tenders/${tenderId}/restore`);
     return response.data;
   },
 

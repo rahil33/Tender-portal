@@ -6,6 +6,7 @@ const {
   TENDER_VISIBILITY,
   TENDER_VISIBILITY_VALUES,
   DOCUMENT_TYPE_VALUES,
+  VALID_TRANSITIONS,
 } = require('./constants');
 
 const tenderDocumentSchema = new mongoose.Schema(
@@ -89,6 +90,7 @@ const tenderSchema = new mongoose.Schema(
       trim: true,
       unique: true,
       sparse: true,
+      index: true,
     },
     slug: {
       type: String,
@@ -193,6 +195,15 @@ const tenderSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    awardedAt: {
+      type: Date,
+      default: null,
+    },
+    awardedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Bid',
+      default: null,
+    },
     isArchived: {
       type: Boolean,
       default: false,
@@ -200,6 +211,20 @@ const tenderSchema = new mongoose.Schema(
     },
     archivedAt: {
       type: Date,
+      default: null,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       default: null,
     },
     tags: [{
@@ -211,6 +236,21 @@ const tenderSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    department: {
+      type: String,
+      trim: true,
+    },
+    tenderType: {
+      type: String,
+      enum: ['domestic', 'international', 'government', 'private'],
+      default: 'government',
+    },
+    gstRate: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 18,
+    },
     contactPerson: {
       name: { type: String, trim: true },
       email: { type: String, trim: true, lowercase: true },
@@ -220,13 +260,46 @@ const tenderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    views: {
+      type: Number,
+      default: 0,
+    },
+    auditTrail: [{
+      action: { type: String, required: true },
+      performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      performedByEmail: { type: String },
+      timestamp: { type: Date, default: Date.now },
+      details: { type: String },
+      changes: { type: mongoose.Schema.Types.Mixed },
+    }],
   },
   { timestamps: true }
 );
 
 tenderSchema.index({ title: 'text', description: 'text', tenderNumber: 'text' });
-tenderSchema.index({ status: 1, isArchived: 1 });
+tenderSchema.index({ status: 1, isArchived: 1, isDeleted: 0 });
 tenderSchema.index({ submissionDeadline: 1, status: 1 });
+tenderSchema.index({ createdBy: 1, isDeleted: 0 });
+tenderSchema.index({ category: 1, status: 1 });
+tenderSchema.index({ location: 1, isDeleted: 0 });
+tenderSchema.index({ 'budget.estimated': 1, isDeleted: 0 });
+
+tenderSchema.methods.addAuditTrail = function(action, performedBy, performedByEmail, details = null, changes = null) {
+  this.auditTrail.push({
+    action,
+    performedBy,
+    performedByEmail,
+    timestamp: new Date(),
+    details,
+    changes,
+  });
+};
+
+tenderSchema.methods.canTransitionTo = function(newStatus) {
+  const currentStatus = this.status;
+  const validTransitions = VALID_TRANSITIONS[currentStatus] || [];
+  return validTransitions.includes(newStatus);
+};
 
 module.exports = {
   Tender: mongoose.model('Tender', tenderSchema),

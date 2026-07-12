@@ -2,6 +2,16 @@ const mailConfig = require('../config/mail');
 const logger = require('../config/logger');
 
 class EmailService {
+  async sendNotification(userId, message, type, metadata) {
+    try {
+      logger.info('Email notification queued', { userId, type, message });
+      return { success: true, userId, type, message, metadata };
+    } catch (error) {
+      logger.error('Failed to send email notification', { userId, error: error.message });
+      throw error;
+    }
+  }
+
   async sendWelcomeEmail(userEmail, userName) {
     try {
       const result = await mailConfig.sendWelcomeEmail(userEmail, userName);

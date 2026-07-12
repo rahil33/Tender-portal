@@ -27,6 +27,7 @@ router.delete('/:tenderId', protect, authorize(ROLES.VENDOR, ROLES.ADMIN), tende
 router.put('/:tenderId/publish', protect, authorize(ROLES.VENDOR, ROLES.ADMIN), tendersValidators.publishTender, tendersController.publishTender);
 router.put('/:tenderId/unpublish', protect, authorize(ROLES.VENDOR, ROLES.ADMIN), tendersValidators.unpublishTender, tendersController.unpublishTender);
 router.put('/:tenderId/close', protect, authorize(ROLES.VENDOR, ROLES.ADMIN), tendersValidators.closeTender, tendersController.closeTender);
+router.put('/:tenderId/award', protect, authorize(ROLES.VENDOR, ROLES.ADMIN), tendersValidators.awardTender, tendersController.awardTender);
 router.put('/:tenderId/cancel', protect, authorize(ROLES.VENDOR, ROLES.ADMIN), tendersValidators.cancelTender, tendersController.cancelTender);
 
 /**

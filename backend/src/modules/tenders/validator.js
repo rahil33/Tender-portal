@@ -337,6 +337,16 @@ const tendersValidators = {
     handleValidationErrors,
   ],
 
+  awardTender: [
+    param('tenderId')
+      .isMongoId()
+      .withMessage('Tender ID must be valid'),
+    body('awardedToBidId')
+      .isMongoId()
+      .withMessage('Valid bid ID is required'),
+    handleValidationErrors,
+  ],
+
   archiveTender: [
     param('tenderId')
       .isMongoId()

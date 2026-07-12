@@ -24,12 +24,29 @@ class TenderDTO {
     this.closedAt = data.closedAt || null;
     this.cancelledAt = data.cancelledAt || null;
     this.cancellationReason = data.cancellationReason || null;
+    this.awardedAt = data.awardedAt || null;
+    this.awardedTo = data.awardedTo || null;
     this.isArchived = data.isArchived || false;
     this.archivedAt = data.archivedAt || null;
+    this.isDeleted = data.isDeleted || false;
+    this.deletedAt = data.deletedAt || null;
+    this.deletedBy = data.deletedBy || null;
     this.tags = data.tags || [];
     this.location = data.location || '';
+    this.department = data.department || null;
+    this.tenderType = data.tenderType || 'government';
+    this.gstRate = data.gstRate || 18;
     this.contactPerson = data.contactPerson || {};
     this.metadata = data.metadata || {};
+    this.views = data.views || 0;
+    this.auditTrail = (data.auditTrail || []).map((a) => ({
+      action: a.action,
+      performedBy: a.performedBy,
+      performedByEmail: a.performedByEmail,
+      timestamp: a.timestamp,
+      details: a.details,
+      changes: a.changes,
+    }));
     this.createdAt = data.createdAt;
     this.updatedAt = data.updatedAt;
   }

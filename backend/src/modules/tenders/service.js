@@ -6,11 +6,14 @@ const {
 } = require('./dto');
 const {
   TENDER_STATUS,
+  VALID_TRANSITIONS,
   DEFAULT_PAGE,
   DEFAULT_LIMIT,
   SORT_FIELDS,
   SORT_ORDER,
 } = require('./constants');
+const AuditService = require('../../services/AuditService');
+const NotificationService = require('../../services/NotificationService');
 
 class TendersService {
   _generateSlug(title) {
@@ -24,14 +27,52 @@ class TendersService {
   _generateTenderNumber() {
     const prefix = 'TND';
     const year = new Date().getFullYear();
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `${prefix}-${year}-${random}`;
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${prefix}-${year}-${timestamp}-${random}`;
+  }
+
+  async _checkOwnership(tenderId, userId) {
+    const tender = await Tender.findById(tenderId);
+    if (!tender) {
+      throw new Error('Tender not found');
+    }
+    if (tender.isDeleted) {
+      throw new Error('Tender has been deleted');
+    }
+    if (tender.createdBy.toString() !== userId.toString()) {
+      throw new Error('You do not have permission to modify this tender');
+    }
+    return tender;
+  }
+
+  async _validateDates(data) {
+    if (data.openingDate && data.submissionDeadline) {
+      const opening = new Date(data.openingDate);
+      const deadline = new Date(data.submissionDeadline);
+      if (opening >= deadline) {
+        throw new Error('Opening date must be before submission deadline');
+      }
+    }
+    if (data.submissionDeadline && new Date(data.submissionDeadline) <= new Date()) {
+      throw new Error('Submission deadline must be in the future');
+    }
+  }
+
+  async _checkDuplicateTenderNumber(tenderNumber) {
+    const existing = await Tender.findOne({ tenderNumber, isDeleted: false });
+    if (existing) {
+      throw new Error('A tender with this number already exists');
+    }
   }
 
   async createTender(createdBy, tenderData) {
     try {
       const slug = tenderData.slug || this._generateSlug(tenderData.title);
-      const tenderNumber = this._generateTenderNumber();
+      let tenderNumber = this._generateTenderNumber();
+      
+      await this._checkDuplicateTenderNumber(tenderNumber);
+      await this._validateDates(tenderData);
 
       const tender = await Tender.create({
         ...tenderData,
@@ -39,6 +80,15 @@ class TendersService {
         slug,
         createdBy,
         status: TENDER_STATUS.DRAFT,
+      });
+
+      await AuditService.createAuditLog({
+        action: 'CREATE',
+        resourceType: 'Tender',
+        resourceId: tender._id,
+        user: { id: createdBy },
+        status: 'SUCCESS',
+        metadata: { tenderNumber, title: tenderData.title },
       });
 
       return {
@@ -71,19 +121,15 @@ class TendersService {
     }
   }
 
-  async updateTender(tenderId, updates) {
+  async updateTender(tenderId, userId, updates) {
     try {
-      const existing = await Tender.findById(tenderId);
+      const tender = await this._checkOwnership(tenderId, userId);
 
-      if (!existing) {
-        throw new Error('Tender not found');
-      }
-
-      if (existing.status === TENDER_STATUS.PUBLISHED) {
+      if (tender.status === TENDER_STATUS.PUBLISHED) {
         throw new Error('Cannot update a published tender. Unpublish first.');
       }
 
-      if (existing.status === TENDER_STATUS.CLOSED || existing.status === TENDER_STATUS.CANCELLED) {
+      if (tender.status === TENDER_STATUS.CLOSED || tender.status === TENDER_STATUS.CANCELLED) {
         throw new Error('Cannot update a closed or cancelled tender');
       }
 
@@ -91,15 +137,26 @@ class TendersService {
         updates.slug = this._generateSlug(updates.title);
       }
 
-      const tender = await Tender.findByIdAndUpdate(
+      await this._validateDates(updates);
+
+      const updatedTender = await Tender.findByIdAndUpdate(
         tenderId,
         updates,
         { new: true, runValidators: true }
       );
 
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        changes: { after: updates },
+      });
+
       return {
         success: true,
-        data: new TenderDTO(tender),
+        data: new TenderDTO(updatedTender),
         message: 'Tender updated successfully',
       };
     } catch (error) {
@@ -107,19 +164,27 @@ class TendersService {
     }
   }
 
-  async deleteTender(tenderId) {
+  async deleteTender(tenderId, userId) {
     try {
-      const tender = await Tender.findById(tenderId);
-
-      if (!tender) {
-        throw new Error('Tender not found');
-      }
+      const tender = await this._checkOwnership(tenderId, userId);
 
       if (tender.status === TENDER_STATUS.PUBLISHED) {
         throw new Error('Cannot delete a published tender. Cancel it first.');
       }
 
-      await Tender.findByIdAndDelete(tenderId);
+      tender.isDeleted = true;
+      tender.deletedAt = new Date();
+      tender.deletedBy = userId;
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'DELETE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { reason: 'Soft deleted' },
+      });
 
       return {
         success: true,
@@ -133,7 +198,7 @@ class TendersService {
   async getAllTenders(page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, filters = {}) {
     try {
       const skip = (page - 1) * limit;
-      const query = {};
+      const query = { isDeleted: false };
 
       if (filters.status) {
         query.status = filters.status;
@@ -152,12 +217,26 @@ class TendersService {
 
       if (filters.createdBy) query.createdBy = filters.createdBy;
       if (filters.issuingOrganization) query.issuingOrganization = filters.issuingOrganization;
+      if (filters.location) query.location = filters.location;
+      
+      if (filters.minBudget || filters.maxBudget) {
+        query['budget.estimated'] = {};
+        if (filters.minBudget) query['budget.estimated'].$gte = parseFloat(filters.minBudget);
+        if (filters.maxBudget) query['budget.estimated'].$lte = parseFloat(filters.maxBudget);
+      }
+
+      if (filters.closingDateFrom || filters.closingDateTo) {
+        query.submissionDeadline = {};
+        if (filters.closingDateFrom) query.submissionDeadline.$gte = new Date(filters.closingDateFrom);
+        if (filters.closingDateTo) query.submissionDeadline.$lte = new Date(filters.closingDateTo);
+      }
 
       if (filters.search) {
         query.$or = [
           { title: { $regex: filters.search, $options: 'i' } },
           { tenderNumber: { $regex: filters.search, $options: 'i' } },
           { description: { $regex: filters.search, $options: 'i' } },
+          { location: { $regex: filters.search, $options: 'i' } },
           { tags: { $in: [new RegExp(filters.search, 'i')] } },
         ];
       }
@@ -231,16 +310,12 @@ class TendersService {
     }
   }
 
-  async publishTender(tenderId, publishedBy) {
+  async publishTender(tenderId, userId, publishedBy) {
     try {
-      const tender = await Tender.findById(tenderId);
+      const tender = await this._checkOwnership(tenderId, userId);
 
-      if (!tender) {
-        throw new Error('Tender not found');
-      }
-
-      if (tender.status !== TENDER_STATUS.DRAFT) {
-        throw new Error('Only draft tenders can be published');
+      if (!tender.canTransitionTo(TENDER_STATUS.PUBLISHED)) {
+        throw new Error(`Cannot publish tender from ${tender.status} status`);
       }
 
       if (!tender.submissionDeadline) {
@@ -249,6 +324,10 @@ class TendersService {
 
       if (!tender.category) {
         throw new Error('Category is required to publish');
+      }
+
+      if (!tender.description || tender.description.length < 50) {
+        throw new Error('Tender description must be at least 50 characters');
       }
 
       const updated = await Tender.findByIdAndUpdate(
@@ -261,6 +340,25 @@ class TendersService {
         { new: true, runValidators: true }
       );
 
+      tender.addAuditTrail('PUBLISHED', userId, publishedBy, 'Tender published successfully');
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'publish', publishedBy },
+      });
+
+      await NotificationService.notify('tender:published', {
+        tenderId,
+        tenderNumber: tender.tenderNumber,
+        title: tender.title,
+        publishedBy,
+      });
+
       return {
         success: true,
         data: new TenderDTO(updated),
@@ -271,16 +369,12 @@ class TendersService {
     }
   }
 
-  async unpublishTender(tenderId) {
+  async unpublishTender(tenderId, userId) {
     try {
-      const tender = await Tender.findById(tenderId);
+      const tender = await this._checkOwnership(tenderId, userId);
 
-      if (!tender) {
-        throw new Error('Tender not found');
-      }
-
-      if (tender.status !== TENDER_STATUS.PUBLISHED) {
-        throw new Error('Only published tenders can be unpublished');
+      if (!tender.canTransitionTo(TENDER_STATUS.DRAFT)) {
+        throw new Error(`Cannot unpublish tender from ${tender.status} status`);
       }
 
       const updated = await Tender.findByIdAndUpdate(
@@ -293,6 +387,18 @@ class TendersService {
         { new: true, runValidators: true }
       );
 
+      tender.addAuditTrail('UNPUBLISHED', userId, null, 'Tender unpublished and returned to draft');
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'unpublish' },
+      });
+
       return {
         success: true,
         data: new TenderDTO(updated),
@@ -303,26 +409,45 @@ class TendersService {
     }
   }
 
-  async closeTender(tenderId) {
+  async closeTender(tenderId, userId) {
     try {
-      const tender = await Tender.findById(tenderId);
+      const tender = await this._checkOwnership(tenderId, userId);
 
-      if (!tender) {
-        throw new Error('Tender not found');
+      if (!tender.canTransitionTo(TENDER_STATUS.CLOSED)) {
+        throw new Error(`Cannot close tender from ${tender.status} status`);
       }
 
-      if (tender.status !== TENDER_STATUS.PUBLISHED) {
-        throw new Error('Only published tenders can be closed');
+      const now = new Date();
+      if (tender.submissionDeadline && now < tender.submissionDeadline) {
+        throw new Error('Cannot close tender before submission deadline');
       }
 
       const updated = await Tender.findByIdAndUpdate(
         tenderId,
         {
           status: TENDER_STATUS.CLOSED,
-          closedAt: new Date(),
+          closedAt: now,
         },
         { new: true, runValidators: true }
       );
+
+      tender.addAuditTrail('CLOSED', userId, null, 'Tender closed successfully');
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'close' },
+      });
+
+      await NotificationService.notify('tender:closed', {
+        tenderId,
+        tenderNumber: tender.tenderNumber,
+        title: tender.title,
+      });
 
       return {
         success: true,
@@ -334,20 +459,67 @@ class TendersService {
     }
   }
 
-  async cancelTender(tenderId, cancellationReason = null) {
+  async awardTender(tenderId, userId, awardedToBidId) {
     try {
-      const tender = await Tender.findById(tenderId);
+      const tender = await this._checkOwnership(tenderId, userId);
 
-      if (!tender) {
-        throw new Error('Tender not found');
+      if (!tender.canTransitionTo(TENDER_STATUS.AWARDED)) {
+        throw new Error(`Cannot award tender from ${tender.status} status`);
+      }
+
+      if (!awardedToBidId) {
+        throw new Error('Bid ID is required to award tender');
+      }
+
+      const updated = await Tender.findByIdAndUpdate(
+        tenderId,
+        {
+          status: TENDER_STATUS.AWARDED,
+          awardedAt: new Date(),
+          awardedTo: awardedToBidId,
+        },
+        { new: true, runValidators: true }
+      );
+
+      tender.addAuditTrail('AWARDED', userId, null, `Tender awarded to bid ${awardedToBidId}`);
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'award', awardedTo: awardedToBidId },
+      });
+
+      await NotificationService.notify('tender:awarded', {
+        tenderId,
+        tenderNumber: tender.tenderNumber,
+        title: tender.title,
+        awardedTo: awardedToBidId,
+      });
+
+      return {
+        success: true,
+        data: new TenderDTO(updated),
+        message: 'Tender awarded successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to award tender: ${error.message}`);
+    }
+  }
+
+  async cancelTender(tenderId, userId, cancellationReason = null) {
+    try {
+      const tender = await this._checkOwnership(tenderId, userId);
+
+      if (!tender.canTransitionTo(TENDER_STATUS.CANCELLED)) {
+        throw new Error(`Cannot cancel tender from ${tender.status} status`);
       }
 
       if (tender.status === TENDER_STATUS.CANCELLED) {
         throw new Error('Tender is already cancelled');
-      }
-
-      if (tender.status === TENDER_STATUS.CLOSED) {
-        throw new Error('Cannot cancel a closed tender');
       }
 
       const updated = await Tender.findByIdAndUpdate(
@@ -360,6 +532,25 @@ class TendersService {
         { new: true, runValidators: true }
       );
 
+      tender.addAuditTrail('CANCELLED', userId, null, `Tender cancelled. Reason: ${cancellationReason || 'Not provided'}`);
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'cancel', reason: cancellationReason },
+      });
+
+      await NotificationService.notify('tender:cancelled', {
+        tenderId,
+        tenderNumber: tender.tenderNumber,
+        title: tender.title,
+        reason: cancellationReason,
+      });
+
       return {
         success: true,
         data: new TenderDTO(updated),
@@ -370,16 +561,16 @@ class TendersService {
     }
   }
 
-  async archiveTender(tenderId) {
+  async archiveTender(tenderId, userId) {
     try {
-      const tender = await Tender.findById(tenderId);
-
-      if (!tender) {
-        throw new Error('Tender not found');
-      }
+      const tender = await this._checkOwnership(tenderId, userId);
 
       if (tender.isArchived) {
         throw new Error('Tender is already archived');
+      }
+
+      if (![TENDER_STATUS.CLOSED, TENDER_STATUS.CANCELLED, TENDER_STATUS.AWARDED].includes(tender.status)) {
+        throw new Error('Only closed, cancelled, or awarded tenders can be archived');
       }
 
       const updated = await Tender.findByIdAndUpdate(
@@ -391,6 +582,18 @@ class TendersService {
         { new: true }
       );
 
+      tender.addAuditTrail('ARCHIVED', userId, null, 'Tender archived');
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'archive' },
+      });
+
       return {
         success: true,
         data: new TenderDTO(updated),
@@ -401,13 +604,9 @@ class TendersService {
     }
   }
 
-  async unarchiveTender(tenderId) {
+  async unarchiveTender(tenderId, userId) {
     try {
-      const tender = await Tender.findById(tenderId);
-
-      if (!tender) {
-        throw new Error('Tender not found');
-      }
+      const tender = await this._checkOwnership(tenderId, userId);
 
       if (!tender.isArchived) {
         throw new Error('Tender is not archived');
@@ -421,6 +620,18 @@ class TendersService {
         },
         { new: true }
       );
+
+      tender.addAuditTrail('UNARCHIVED', userId, null, 'Tender unarchived');
+      await tender.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Tender',
+        resourceId: tenderId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: { action: 'unarchive' },
+      });
 
       return {
         success: true,

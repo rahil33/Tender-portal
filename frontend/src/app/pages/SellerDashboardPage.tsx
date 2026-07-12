@@ -3,11 +3,12 @@ import { Link } from 'react-router';
 import {
   UploadCloud, TrendingUp, ShoppingBag, Users, CheckCircle,
   Clock, AlertCircle, XCircle, Eye, Download, Plus, Bell,
-  ArrowRight, Package, BarChart2, FileText, Loader2,
+  ArrowRight, Package, BarChart2, FileText, Loader2, Trash2, Edit,
 } from 'lucide-react';
 import { tenderService, Tender } from '../../services/tenderService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 
 type TenderStatus = 'approved' | 'pending' | 'under_review' | 'rejected' | 'sold' | 'draft' | 'published' | 'closed' | 'cancelled';
 
@@ -131,11 +132,14 @@ const getDynamicStats = (tenders: DashboardTender[]) => {
 
 export default function SellerDashboardPage() {
   const { user } = useAuth();
-  const { error: showError } = useNotification();
+  const { error: showError, success: showSuccess } = useNotification();
   const [filter, setFilter] = useState<TenderStatus | 'all'>('all');
   const [activeTab, setActiveTab] = useState<'tenders' | 'analytics'>('tenders');
   const [tenders, setTenders] = useState<DashboardTender[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [tenderToDelete, setTenderToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchTenders();
@@ -160,7 +164,7 @@ export default function SellerDashboardPage() {
         budget: t.budget,
         createdAt: t.createdAt,
         status: t.status as TenderStatus,
-        views: 0,
+        views: t.views || 0,
         buyers: 0,
       })));
     } catch (err: any) {
@@ -168,6 +172,29 @@ export default function SellerDashboardPage() {
       showError('Failed to load your tenders');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (tenderId: string) => {
+    setTenderToDelete(tenderId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!tenderToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await tenderService.deleteTender(tenderToDelete);
+      showSuccess('Tender deleted successfully');
+      setTenders(tenders.filter(t => t._id !== tenderToDelete));
+      setDeleteDialogOpen(false);
+      setTenderToDelete(null);
+    } catch (err: any) {
+      console.error('Failed to delete tender:', err);
+      showError(err.response?.data?.message || 'Failed to delete tender');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -334,8 +361,19 @@ export default function SellerDashboardPage() {
                               >
                                 <Eye size={16} />
                               </Link>
-                              <button className="w-9 h-9 rounded-xl flex items-center justify-center transition-all bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100" title="Download PDF">
-                                <Download size={16} />
+                              <button 
+                                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100" 
+                                title="Edit Tender"
+                                onClick={(e) => { e.stopPropagation(); window.location.href = `/seller/upload?edit=${tender._id}`; }}
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button 
+                                className="w-9 h-9 rounded-xl flex items-center justify-center transition-all bg-gray-50 border border-gray-200 text-red-600 hover:bg-red-50 hover:border-red-200" 
+                                title="Delete Tender"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteClick(tender._id); }}
+                              >
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           </div>
@@ -493,6 +531,19 @@ export default function SellerDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Tender?"
+        description="This action cannot be undone. This will permanently delete the tender and all associated documents."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

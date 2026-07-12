@@ -27,6 +27,8 @@ router.delete('/:documentId', protect, authorize(ROLES.VENDOR, ROLES.BUYER, ROLE
  */
 router.put('/:documentId/restore', protect, authorize(ROLES.VENDOR, ROLES.BUYER, ROLES.ADMIN), documentsValidators.restoreDocument, documentsController.restoreDocument);
 router.get('/:documentId/download', protect, authorize(ROLES.VENDOR, ROLES.BUYER, ROLES.ADMIN), documentsValidators.downloadDocument, documentsController.downloadDocument);
+router.get('/:documentId/preview', protect, authorize(ROLES.VENDOR, ROLES.BUYER, ROLES.ADMIN), documentsValidators.downloadDocument, documentsController.previewDocument);
 router.post('/:documentId/versions', protect, authorize(ROLES.VENDOR, ROLES.BUYER, ROLES.ADMIN), documentsValidators.uploadNewVersion, documentsController.uploadNewVersion);
+router.put('/:documentId/replace', protect, authorize(ROLES.VENDOR, ROLES.BUYER, ROLES.ADMIN), documentsValidators.uploadDocument, documentsController.replaceDocument);
 
 module.exports = router;
