@@ -10,6 +10,7 @@ const dashboardRoutes = require('./src/modules/dashboard/dashboard.routes');
 const usersRoutes = require('./src/modules/users/users.routes');
 const organizationsRoutes = require('./src/modules/organizations/routes');
 const tendersRoutes = require('./src/modules/tenders/routes');
+const liveTendersRoutes = require('./src/modules/live-tenders/routes');
 const bidsRoutes = require('./src/modules/bids/routes');
 const categoriesRoutes = require('./src/modules/categories/routes');
 const documentsRoutes = require('./src/modules/documents/routes');
@@ -206,6 +207,12 @@ app.use('/api/organizations', organizationsRoutes);
 app.use('/api/tenders', tendersRoutes);
 
 /**
+ * Live Tenders Module Routes (CPPP Sync)
+ * All routes are prefixed with /api/live-tenders
+ */
+app.use('/api/live-tenders', liveTendersRoutes);
+
+/**
  * Upload Routes
  * All routes are prefixed with /api/upload
  */
@@ -295,12 +302,17 @@ app.use(errorHandler);
 // ─── SERVER STARTUP ───────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
+// Start Tender Sync Scheduler
+const tenderSyncScheduler = require('./src/services/tenderSyncScheduler');
+tenderSyncScheduler.start();
+
 server = app.listen(PORT, () => {
   console.log(`
   ╔════════════════════════════════════════════════╗
   ║  Phoenix Tender Tech Backend API               ║
   ║  Server running on http://localhost:${PORT}      ║
   ║  Environment: ${process.env.NODE_ENV || 'development'}           ║
+  ║  Live Tender Sync: Enabled (60 min interval)   ║
   ╚════════════════════════════════════════════════╝
   `);
 });
@@ -331,21 +343,28 @@ const gracefulShutdown = async (signal) => {
   }
 };
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdownWrapper('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdownWrapper('SIGINT'));
 
 process.on('uncaughtException', (error) => {
   console.error("UNCAUGHT EXCEPTION");
     console.error(error);
   logger.error('Uncaught Exception:', error);
-  gracefulShutdown('uncaughtException');
+  gracefulShutdownWrapper('uncaughtException');
 });
+
+// Stop scheduler on shutdown
+const originalGracefulShutdown = gracefulShutdown;
+const gracefulShutdownWrapper = async (signal) => {
+  tenderSyncScheduler.stop();
+  await originalGracefulShutdown(signal);
+};
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error("UNHANDLED REJECTION");
     console.error(reason);
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  gracefulShutdown('unhandledRejection');
+  gracefulShutdownWrapper('unhandledRejection');
 });
 
 module.exports = app;

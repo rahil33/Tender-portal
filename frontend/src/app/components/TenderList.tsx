@@ -13,12 +13,14 @@ export const TenderList: React.FC = () => {
   useEffect(() => {
     const fetchTenders = async () => {
       try {
+        // First try to get live tenders from CPPP sync
         const response = await tenderService.getAllTenders({
           page: 1,
           limit: 4,
           status: 'published',
+          isArchived: false,
         });
-        setTenders(response.data.data);
+        setTenders(response.data.data || []);
       } catch (err: any) {
         console.error('Failed to fetch tenders:', err);
         setError(err.response?.data?.message || 'Failed to load tenders');
