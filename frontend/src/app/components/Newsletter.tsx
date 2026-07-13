@@ -1,19 +1,34 @@
 import React, { useState } from 'react';
-import { Mail, Send, CheckCircle } from 'lucide-react';
+import { Mail, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { subscribeToNewsletter } from '../../services/blogService';
+import { toast } from 'sonner';
 
 export const Newsletter: React.FC = () => {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await subscribeToNewsletter(email, 'website');
       setSubmitted(true);
+      toast.success(result.message || 'Successfully subscribed to newsletter!');
+      setEmail('');
       setTimeout(() => {
         setSubmitted(false);
-        setEmail('');
-      }, 3000);
+      }, 5000);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Failed to subscribe. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -76,15 +91,25 @@ export const Newsletter: React.FC = () => {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email address"
                     required
-                    className="w-full pl-12 pr-4 py-4 rounded-xl text-[#111827] bg-white border border-[#E5E7EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB] transition-all"
+                    disabled={loading}
+                    className="w-full pl-12 pr-4 py-4 rounded-xl text-[#111827] bg-white border border-[#E5E7EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB] transition-all disabled:bg-gray-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="px-8 py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 whitespace-nowrap bg-[#2563EB] text-white hover:bg-blue-700 shadow-lg border border-transparent"
-                  disabled={submitted}
+                  className="px-8 py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 whitespace-nowrap bg-[#2563EB] text-white hover:bg-blue-700 shadow-lg border border-transparent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  disabled={loading || submitted}
                 >
-                  {submitted ? 'Subscribed!' : (<><Send size={18} /> Subscribe</>)}
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Subscribing...
+                    </>
+                  ) : submitted ? (
+                    <><CheckCircle size={18} /> Subscribed!</>
+                  ) : (
+                    <><Send size={18} /> Subscribe</>
+                  )}
                 </button>
               </motion.form>
             ) : (

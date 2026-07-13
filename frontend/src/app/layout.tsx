@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { AuthModal } from './components/AuthModal';
 import { WhatsAppButton } from './components/WhatsAppButton';
+import { ScrollToTop } from './components/ScrollToTop';
 
 export const Layout: React.FC = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -30,6 +31,7 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
+      <ScrollToTop />
       <a
         href="#main-content"
         onClick={handleSkipToMain}

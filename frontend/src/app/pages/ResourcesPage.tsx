@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router';
-import { Calendar, User, ArrowRight, BookOpen } from 'lucide-react';
+import { Calendar, User, ArrowRight, BookOpen, Mail, Send, CheckCircle } from 'lucide-react';
+import { subscribeToNewsletter } from '../../services/blogService';
+import { toast } from 'sonner';
 
 const blogPosts = [
   {
@@ -69,10 +71,33 @@ const categories = ['All', 'GeM Portal', 'Tender Tips', 'Certificates'];
 
 export default function ResourcesPage() {
   const [selectedCategory, setSelectedCategory] = React.useState('All');
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterLoading, setNewsletterLoading] = useState(false);
+  const [newsletterSubmitted, setNewsletterSubmitted] = useState(false);
 
   const filteredPosts = selectedCategory === 'All' 
     ? blogPosts 
     : blogPosts.filter(post => post.category === selectedCategory);
+
+  const handleNewsletterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNewsletterLoading(true);
+
+    try {
+      const result = await subscribeToNewsletter(newsletterEmail, 'website');
+      setNewsletterSubmitted(true);
+      toast.success(result.message || 'Successfully subscribed to newsletter!');
+      setNewsletterEmail('');
+      setTimeout(() => {
+        setNewsletterSubmitted(false);
+      }, 5000);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Failed to subscribe. Please try again.';
+      toast.error(errorMessage);
+    } finally {
+      setNewsletterLoading(false);
+    }
+  };
 
   return (
     <div className="py-20 bg-gray-50 min-h-screen">
@@ -155,16 +180,39 @@ export default function ResourcesPage() {
           <p className="text-xl mb-8 max-w-2xl mx-auto opacity-90">
             Get the latest tender alerts, expert tips, and industry insights delivered straight to your inbox.
           </p>
-          <div className="max-w-md mx-auto flex gap-3">
+          <form onSubmit={handleNewsletterSubmit} className="max-w-md mx-auto flex gap-3">
             <input 
               type="email"
+              value={newsletterEmail}
+              onChange={(e) => setNewsletterEmail(e.target.value)}
               placeholder="Enter your email address"
-              className="flex-1 px-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-white"
+              disabled={newsletterLoading || newsletterSubmitted}
+              className="flex-1 px-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+              required
             />
-            <button className="px-8 py-3 bg-white text-[#0B3D91] rounded-lg font-bold hover:bg-blue-50 transition-colors">
-              Subscribe
+            <button 
+              type="submit"
+              disabled={newsletterLoading || newsletterSubmitted}
+              className="px-8 py-3 bg-white text-[#0B3D91] rounded-lg font-bold hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {newsletterLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-[#0B3D91] border-t-transparent rounded-full animate-spin" />
+                  <span>Subscribing...</span>
+                </>
+              ) : newsletterSubmitted ? (
+                <>
+                  <CheckCircle size={18} />
+                  <span>Subscribed!</span>
+                </>
+              ) : (
+                <>
+                  <Send size={18} />
+                  <span>Subscribe</span>
+                </>
+              )}
             </button>
-          </div>
+          </form>
         </div>
       </div>
     </div>
