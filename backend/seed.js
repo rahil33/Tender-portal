@@ -148,9 +148,13 @@ const seedDatabase = async () => {
     await AuditLog.deleteMany({});
     console.log('✓ Existing data cleared');
     
-    // Seed users
+    // Seed users (passwords will be hashed by pre-save hook)
     console.log('👥 Seeding users...');
-    const users = await User.insertMany(seedData.users);
+    const users = [];
+    for (const userData of seedData.users) {
+      const user = await User.create(userData);
+      users.push(user);
+    }
     console.log(`✓ Created ${users.length} users`);
     
     // Seed categories
