@@ -61,7 +61,7 @@ class CPPPScraperService {
     
     try {
       logger.info('Fetching tenders from ePublish RSS feeds...');
-      const rssTenders = const rssTenders = [];
+      const rssTenders = [];
       tenders.push(...rssTenders);
       logger.info(`Fetched ${rssTenders.length} tenders from RSS feeds`);
     } catch (error) {
@@ -83,38 +83,6 @@ async fetchFromRSS() {
   logger.warn("CPPP RSS feeds are unavailable. Skipping RSS fetch.");
   return [];
 }
-
-    for (const feedUrl of rssFeeds) {
-      try {
-        const response = await this.fetchWithRetry(feedUrl);
-        const xmlData = response.data;
-        
-        const jsonData = await new Promise((resolve, reject) => {
-          parseString(xmlData, (err, result) => {
-            if (err) reject(err);
-            else resolve(result);
-          });
-        });
-        
-        if (jsonData && jsonData.rss && jsonData.rss.channel) {
-          const items = jsonData.rss.channel[0].item || [];
-          
-          for (const item of items) {
-            if (item && item.title) {
-              const tender = this.parseRSSTender(item);
-              if (tender) {
-                tenders.push(tender);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        logger.warn(`Failed to fetch RSS feed ${feedUrl}`, { error: error.message });
-      }
-    }
-
-    return tenders;
-  }
 
   parseRSSTender(item) {
     const tenderNumber = item.guid?.[0]?._ || item.guid?.[0] || `TND-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
