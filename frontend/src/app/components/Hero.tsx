@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router';
-import { Search, MapPin, ChevronLeft, ChevronRight, ArrowRight, Laptop, FileText, Send, Zap, GraduationCap, ShieldCheck } from 'lucide-react';
+import { Search, MapPin, ChevronLeft, ChevronRight, ArrowRight, Laptop, FileText, Send, Zap, GraduationCap, ShieldCheck, Users } from "lucide-react";
 import { motion, AnimatePresence } from 'motion/react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import laptopWorkspace from 'figma:asset/b560bdd03c4e4e46d04ac11d7333a517b07e30db.png';
