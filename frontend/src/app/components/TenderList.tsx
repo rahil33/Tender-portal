@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router';
 import { MapPin, Building2, ExternalLink, Clock, Tag } from 'lucide-react';
 import { motion } from 'motion/react';
-import { tenderService, Tender } from '../../services/tenderService';
+import { liveTenderService, LiveTender } from '../../services/liveTenderService';
 import { LoadingSpinner, Skeleton } from '../../components/Loading';
 
 export const TenderList: React.FC = () => {
-  const [tenders, setTenders] = useState<Tender[]>([]);
+  const [tenders, setTenders] = useState<LiveTender[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,13 +14,13 @@ export const TenderList: React.FC = () => {
     const fetchTenders = async () => {
       try {
         // First try to get live tenders from CPPP sync
-        const response = await tenderService.getAllTenders({
+        const response = await liveTenderService.getLiveTenders({
           page: 1,
           limit: 4,
           status: 'published',
           isArchived: false,
         });
-        setTenders(response.data.data || []);
+        setTenders(response.data?.data ?? []);
       } catch (err: any) {
         console.error('Failed to fetch tenders:', err);
         setError(err.response?.data?.message || 'Failed to load tenders');
@@ -267,4 +267,4 @@ export const TenderList: React.FC = () => {
       </div>
     </section>
   );
-};
+};export default liveTenderService;

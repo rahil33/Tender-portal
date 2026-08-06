@@ -94,7 +94,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    logger.warn('CORS rejected origin', { origin, path: req.path });
+    logger.warn('CORS rejected origin', { origin });
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,

@@ -52,6 +52,8 @@ export interface LiveTenderFilters {
   category?: string;
   location?: string;
   state?: string;
+  status?: string;
+  isArchived?: boolean;
 }
 
 export interface LiveTenderResponse {
@@ -77,6 +79,10 @@ export const liveTenderService = {
     if (filters.category) params.append('category', filters.category);
     if (filters.location) params.append('location', filters.location);
     if (filters.state) params.append('state', filters.state);
+    if (filters.status) params.append('status', filters.status);
+
+if (filters.isArchived !== undefined)
+  params.append('isArchived', String(filters.isArchived));
 
     const response = await api.get<{
   data: LiveTender[];
@@ -86,7 +92,9 @@ export const liveTenderService = {
     total: number;
     pages: number;
   };
-}>(`/live-tenders?${params.toString()}`);
+}>('/live-tenders', {
+  params: filters,
+});
     
     // DEBUG: Log what the service returns
     console.log('[liveTenderService] API response:', response);
@@ -97,12 +105,12 @@ export const liveTenderService = {
 
   async getStates() {
     const response = await api.get<string[]>('/live-tenders/states');
-    return response.data;
+    return response.data.data ?? [];
   },
 
   async getDepartments() {
     const response = await api.get<string[]>('/live-tenders/departments');
-    return response.data;
+    return response.data.data;
   },
 
   async getTenderDetails(cpppId: string) {
