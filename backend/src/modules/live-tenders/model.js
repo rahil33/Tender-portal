@@ -161,7 +161,7 @@ const tenderSchema = new mongoose.Schema(
 
 tenderSchema.index({ submissionDeadline: 1, isActive: 1 });
 tenderSchema.index({ category: 1, isActive: 1 });
-tenderSchema.index({ state: 1, isActive: 1 });
+tenderSchema.index({ 'metadata.state': 1, isActive: 1 });
 tenderSchema.index({ department: 1, isActive: 1 });
 tenderSchema.index({ createdAt: -1 });
 

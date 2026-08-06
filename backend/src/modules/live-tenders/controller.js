@@ -35,13 +35,33 @@ class LiveTenderController {
       const sortField = sortBy === 'submissionDeadline' ? 'submissionDeadline' : 'createdAt';
       const sortValue = sortOrder === 'asc' ? 1 : -1;
 
-      const tenders = await LiveTender.find(query)
-        .sort({ [sortField]: sortValue })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
+      console.log("Query:", query);
 
-      const total = await LiveTender.countDocuments(query);
+let tenders = [];
+let total = 0;
+
+try {
+  tenders = await LiveTender.find(query)
+    .sort({ [sortField]: sortValue })
+    .skip(skip)
+    .limit(parseInt(limit))
+    .lean();
+
+  console.log("Fetched tenders:", tenders.length);
+} catch (err) {
+  console.error("LiveTender.find() failed");
+  console.error(err);
+  throw err;
+}
+
+try {
+  total = await LiveTender.countDocuments(query);
+  console.log("Total:", total);
+} catch (err) {
+  console.error("countDocuments() failed");
+  console.error(err);
+  throw err;
+}
 
       res.status(200).json({
         success: true,
