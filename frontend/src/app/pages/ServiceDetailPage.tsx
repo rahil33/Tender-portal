@@ -246,33 +246,6 @@ const servicesData: Record<string, any> = {
     pricing: '₹2,000 + GST',
     duration: '3-5 business days'
   },
-  'zed-certificate': {
-    title: 'ZED Certificate',
-    subtitle: 'Zero Defect and Zero Effect Manufacturing',
-    description: 'Get ZED certification assistance including application support, documentation, assessment guidance, certification process, and consultation to enhance your product quality and manufacturing standards.',
-    features: [
-      'ZED Certification Application Support',
-      'Documentation Preparation',
-      'Assessment Guidance',
-      'Certification Process Consultation'
-    ],
-    benefits: [
-      'Quality standards compliance',
-      'Manufacturing excellence',
-      'Export readiness',
-      'Government tenders eligibility',
-      'International market access'
-    ],
-    process: [
-      { step: '1', title: 'Application Preparation', desc: 'Prepare complete ZED application' },
-      { step: '2', title: 'Document Collection', desc: 'Gather all required documents' },
-      { step: '3', title: 'Assessment Preparation', desc: 'Prepare for ZED assessment' },
-      { step: '4', title: 'Assessment Execution', desc: 'Complete ZED assessment process' },
-      { step: '5', title: 'Certification Support', desc: 'Post-certification guidance' }
-    ],
-    pricing: '₹4,000 + GST',
-    duration: '6-8 weeks'
-  },
   'nsic-registration': {
     title: 'NSIC Registration',
     subtitle: 'National Small Industries Corporation',
