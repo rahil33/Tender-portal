@@ -89,13 +89,16 @@ app.use(cors({
       }
     }
 
-    // Production: strict whitelist
-    if (corsOrigins.includes(origin)) {
-      return callback(null, true);
-    }
+    // Production: whitelist + Vercel preview support
+if (
+  corsOrigins.includes(origin) ||
+  origin.endsWith('.vercel.app')
+) {
+  return callback(null, true);
+}
 
-    logger.warn('CORS rejected origin', { origin });
-    return callback(new Error('Not allowed by CORS'));
+logger.warn('CORS rejected origin', { origin });
+return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
