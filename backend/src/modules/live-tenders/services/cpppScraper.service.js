@@ -61,7 +61,7 @@ class CPPPScraperService {
     
     try {
       logger.info('Fetching tenders from ePublish RSS feeds...');
-      const rssTenders = await this.fetchFromRSS();
+      const rssTenders = const rssTenders = [];
       tenders.push(...rssTenders);
       logger.info(`Fetched ${rssTenders.length} tenders from RSS feeds`);
     } catch (error) {
@@ -80,11 +80,9 @@ class CPPPScraperService {
     return tenders;
   }
 async fetchFromRSS() {
-    const tenders = [];
-    const rssFeeds = [
-      `${this.epublishUrl}/latest.xml`,
-      `${this.epublishUrl}/active.xml`,
-    ];
+  logger.warn("CPPP RSS feeds are unavailable. Skipping RSS fetch.");
+  return [];
+}
 
     for (const feedUrl of rssFeeds) {
       try {
