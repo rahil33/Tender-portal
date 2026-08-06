@@ -43,7 +43,6 @@ const organizationSchema = new mongoose.Schema(
       type: String,
       trim: true,
       uppercase: true,
-      index: true,
     },
     panNumber: {
       type: String,
@@ -139,6 +138,10 @@ const organizationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+organizationSchema.index({ verificationStatus: 1, isActive: 1, createdAt: -1 });
+organizationSchema.index({ ownerId: 1, type: 1, isActive: 1 });
+organizationSchema.index({ gstNumber: 1 }, { sparse: true, unique: true });
+organizationSchema.index({ panNumber: 1 }, { sparse: true, unique: true });
 organizationSchema.index({ name: 'text', description: 'text' });
 
 /**

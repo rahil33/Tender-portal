@@ -1,5 +1,6 @@
 const authService = require('./service');
 const { AuthResponseDTO } = require('./dto');
+const { AUTH_ERRORS } = require('./constants');
 
 class AuthController {
   async register(req, res) {
@@ -12,7 +13,7 @@ class AuthController {
     } catch (error) {
       if (error.message.includes('already registered')) {
         return res.status(409).json(
-          new AuthResponseDTO(false, error.message, null, [error.message])
+          new AuthResponseDTO(false, AUTH_ERRORS.EMAIL_EXISTS, null, [AUTH_ERRORS.EMAIL_EXISTS])
         );
       }
       return res.status(400).json(
@@ -32,8 +33,11 @@ class AuthController {
     } catch (error) {
       if (error.message.includes('Invalid') || error.message.includes('deactivated')) {
         const status = error.message.includes('deactivated') ? 403 : 401;
+        const message = error.message.includes('deactivated') 
+          ? AUTH_ERRORS.ACCOUNT_DEACTIVATED 
+          : AUTH_ERRORS.INVALID_CREDENTIALS;
         return res.status(status).json(
-          new AuthResponseDTO(false, error.message, null, [error.message])
+          new AuthResponseDTO(false, message, null, [message])
         );
       }
       return res.status(500).json(

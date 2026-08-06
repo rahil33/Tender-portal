@@ -96,6 +96,46 @@ class DocumentsController {
     }
   }
 
+  async previewDocument(req, res) {
+    try {
+      const { documentId } = req.params;
+      const userId = req.user?.id || req.user?.userId;
+      const result = await documentsService.previewDocument(documentId, userId);
+
+      return res.status(200).json(
+        new DocumentsResponseDTO(result.success, result.message, result.data)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new DocumentsResponseDTO(false, 'Failed to preview document', null, [error.message])
+      );
+    }
+  }
+
+  async replaceDocument(req, res) {
+    try {
+      const { documentId } = req.params;
+      const userId = req.user?.id || req.user?.userId;
+      const { fileUrl, fileName, fileSize, mimeType, originalFileName } = req.body;
+      
+      const result = await documentsService.replaceDocument(documentId, userId, {
+        fileUrl,
+        fileName,
+        fileSize,
+        mimeType,
+        originalFileName,
+      });
+
+      return res.status(200).json(
+        new DocumentsResponseDTO(result.success, result.message, result.data)
+      );
+    } catch (error) {
+      return res.status(400).json(
+        new DocumentsResponseDTO(false, 'Failed to replace document', null, [error.message])
+      );
+    }
+  }
+
   async getAllDocuments(req, res) {
     try {
       const {

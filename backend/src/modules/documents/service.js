@@ -10,6 +10,10 @@ const {
   SORT_FIELDS,
   SORT_ORDER,
 } = require('./constants');
+const FileService = require('../../services/FileService');
+const AuditService = require('../../services/AuditService');
+const NotificationService = require('../../services/NotificationService');
+const crypto = require('crypto');
 
 class DocumentsService {
   _addAuditLog(document, action, performedBy, details = null) {
@@ -23,13 +27,58 @@ class DocumentsService {
 
   async uploadDocument(uploadedBy, documentData) {
     try {
+      const fileValidation = await FileService.validateFile({
+        originalname: documentData.originalFileName || documentData.fileName,
+        mimetype: documentData.mimeType,
+        size: documentData.fileSize,
+      });
+
+      let fileHash = null;
+      if (documentData.fileBuffer) {
+        fileHash = FileService.generateFileHash(documentData.fileBuffer);
+        
+        const malwareScan = await FileService.malwareScanHook(
+          documentData.fileBuffer,
+          documentData.originalFileName || documentData.fileName
+        );
+        
+        if (!malwareScan.isClean) {
+          throw new Error('Security scan failed. File contains threats.');
+        }
+      }
+
       const document = await Document.create({
         ...documentData,
         uploadedBy,
         originalFileName: documentData.originalFileName || documentData.fileName,
+        fileHash,
+        fileName: FileService.sanitizeFileName(documentData.originalFileName || documentData.fileName),
       });
 
-      this._addAuditLog(document, 'DOCUMENT_UPLOADED', uploadedBy, 'Document uploaded');
+      this._addAuditLog(document, 'DOCUMENT_UPLOADED', uploadedBy, 'Document uploaded with security validation');
+
+      await AuditService.createAuditLog({
+        action: 'CREATE',
+        resourceType: 'Document',
+        resourceId: document._id,
+        user: { id: uploadedBy },
+        status: 'SUCCESS',
+        metadata: {
+          fileName: document.fileName,
+          fileSize: document.fileSize,
+          mimeType: document.mimeType,
+          fileHash,
+        },
+      });
+
+      if (documentData.tenderId) {
+        await NotificationService.notify('document:uploaded', {
+          tenderId: documentData.tenderId,
+          documentId: document._id,
+          fileName: document.fileName,
+          uploadedBy,
+        });
+      }
 
       return {
         success: true,
@@ -71,10 +120,23 @@ class DocumentsService {
         throw new Error('Document not found');
       }
 
+      if (document.uploadedBy.toString() !== userId.toString()) {
+        throw new Error('You do not have permission to update this document');
+      }
+
       Object.assign(document, updates);
       this._addAuditLog(document, 'DOCUMENT_UPDATED', userId, 'Document metadata updated');
 
       await document.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Document',
+        resourceId: documentId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        changes: { after: updates },
+      });
 
       return {
         success: true,
@@ -83,6 +145,129 @@ class DocumentsService {
       };
     } catch (error) {
       throw new Error(`Failed to update document: ${error.message}`);
+    }
+  }
+
+  async replaceDocument(documentId, userId, fileData) {
+    try {
+      const document = await Document.findById(documentId);
+
+      if (!document || document.isDeleted) {
+        throw new Error('Document not found');
+      }
+
+      if (document.uploadedBy.toString() !== userId.toString()) {
+        throw new Error('You do not have permission to replace this document');
+      }
+
+      const fileValidation = await FileService.validateFile({
+        originalname: fileData.originalFileName || fileData.fileName,
+        mimetype: fileData.mimeType,
+        size: fileData.fileSize,
+      });
+
+      let fileHash = null;
+      if (fileData.fileBuffer) {
+        fileHash = FileService.generateFileHash(fileData.fileBuffer);
+        
+        const malwareScan = await FileService.malwareScanHook(
+          fileData.fileBuffer,
+          fileData.originalFileName || fileData.fileName
+        );
+        
+        if (!malwareScan.isClean) {
+          throw new Error('Security scan failed. File contains threats.');
+        }
+      }
+
+      const oldVersion = {
+        versionNumber: document.currentVersion,
+        fileUrl: document.fileUrl,
+        fileName: document.fileName,
+        fileSize: document.fileSize,
+        mimeType: document.mimeType,
+        uploadedBy: document.uploadedBy,
+        uploadedAt: document.uploadedAt || document.createdAt,
+        changes: 'Replaced with new version',
+      };
+
+      document.versionHistory.push(oldVersion);
+      document.currentVersion += 1;
+      document.fileUrl = fileData.fileUrl;
+      document.fileName = FileService.sanitizeFileName(fileData.originalFileName || fileData.fileName);
+      document.fileSize = fileData.fileSize;
+      document.mimeType = fileData.mimeType;
+      document.fileHash = fileHash;
+      document.originalFileName = fileData.originalFileName || fileData.fileName;
+
+      this._addAuditLog(document, 'DOCUMENT_REPLACED', userId, `Document replaced with version ${document.currentVersion}`);
+
+      await document.save();
+
+      await AuditService.createAuditLog({
+        action: 'UPDATE',
+        resourceType: 'Document',
+        resourceId: documentId,
+        user: { id: userId },
+        status: 'SUCCESS',
+        metadata: {
+          action: 'replace',
+          oldVersion: oldVersion.versionNumber,
+          newVersion: document.currentVersion,
+          fileHash,
+        },
+      });
+
+      return {
+        success: true,
+        data: new DocumentDTO(document),
+        message: 'Document replaced successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to replace document: ${error.message}`);
+    }
+  }
+
+  async previewDocument(documentId, userId) {
+    try {
+      const document = await Document.findById(documentId);
+
+      if (!document || document.isDeleted) {
+        throw new Error('Document not found');
+      }
+
+      const isPreviewable = [
+        'application/pdf',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+        'text/plain',
+        'text/csv',
+      ].includes(document.mimeType);
+
+      if (!isPreviewable) {
+        throw new Error('Preview not available for this file type');
+      }
+
+      this._addAuditLog(document, 'DOCUMENT_PREVIEWED', userId, 'Document previewed');
+
+      document.viewCount = (document.viewCount || 0) + 1;
+      await document.save();
+
+      return {
+        success: true,
+        data: {
+          fileUrl: document.fileUrl,
+          fileName: document.fileName,
+          mimeType: document.mimeType,
+          fileSize: document.fileSize,
+          isPreviewable: true,
+        },
+        message: 'Preview ready',
+      };
+    } catch (error) {
+      throw new Error(`Failed to preview document: ${error.message}`);
     }
   }
 

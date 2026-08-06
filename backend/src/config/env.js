@@ -6,7 +6,7 @@ const env = {
   
   MONGO_URI: process.env.MONGO_URI || 'mongodb://localhost:27017/tender_portal',
   
-  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+  JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
   
   CORS_ORIGIN: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000', 'http://localhost:5000'],
@@ -33,14 +33,14 @@ const validateEnv = () => {
   const missing = required.filter(key => !process.env[key]);
   
   if (missing.length > 0) {
-    console.warn(`Warning: Missing environment variables: ${missing.join(', ')}`);
+    console.error(`ERROR: Missing required environment variables: ${missing.join(', ')}`);
+    console.error('Please set these variables in your .env file or environment');
+    process.exit(1);
   }
   
-  if (env.NODE_ENV === 'production') {
-    if (env.JWT_SECRET === 'your-secret-key-change-in-production') {
-      console.error('ERROR: JWT_SECRET must be changed in production!');
-      process.exit(1);
-    }
+  if (env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    console.error('ERROR: JWT_SECRET must be set in production!');
+    process.exit(1);
   }
 };
 

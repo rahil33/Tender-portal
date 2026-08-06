@@ -1,5 +1,7 @@
 const { Bid } = require('./model');
 const { Tender } = require('../tenders/model');
+const mongoose = require('mongoose');
+const notificationService = require('../notifications/service');
 const {
   BidDTO,
   BidSummaryDTO,
@@ -209,6 +211,16 @@ class BidsService {
 
       await bid.save();
 
+      // Send notification
+      await notificationService.sendBidSubmittedNotification(
+        bid._id,
+        bid.bidNumber,
+        tender._id,
+        tender.title,
+        bid.vendorId,
+        bid.bidAmount
+      );
+
       return {
         success: true,
         data: new BidDTO(bid),
@@ -269,10 +281,35 @@ class BidsService {
       const sortValue = filters.sortOrder === SORT_ORDER.ASC ? 1 : -1;
       const sort = { [sortField]: sortValue };
 
+      const projection = {
+        _id: 1,
+        bidNumber: 1,
+        tenderId: 1,
+        vendorId: 1,
+        organizationId: 1,
+        status: 1,
+        bidType: 1,
+        bidAmount: 1,
+        currency: 1,
+        evaluationStatus: 1,
+        submittedAt: 1,
+        createdAt: 1,
+      };
+
       const bids = await Bid.find(query)
-        .populate('tenderId', 'title tenderNumber')
-        .populate('vendorId', 'fullName email')
-        .populate('organizationId', 'name')
+        .select(projection)
+        .populate({
+          path: 'tenderId',
+          select: 'title tenderNumber',
+        })
+        .populate({
+          path: 'vendorId',
+          select: 'fullName email',
+        })
+        .populate({
+          path: 'organizationId',
+          select: 'name',
+        })
         .sort(sort)
         .skip(skip)
         .limit(limit)
@@ -573,6 +610,86 @@ class BidsService {
       };
     } catch (error) {
       throw new Error(`Failed to get bid statistics: ${error.message}`);
+    }
+  }
+
+  async getBuyerAnalytics(vendorId) {
+    try {
+      const totalBids = await Bid.countDocuments({ vendorId, isDeleted: false });
+      const draftBids = await Bid.countDocuments({ vendorId, status: BID_STATUS.DRAFT, isDeleted: false });
+      const submittedBids = await Bid.countDocuments({ vendorId, status: BID_STATUS.SUBMITTED, isDeleted: false });
+      const underReviewBids = await Bid.countDocuments({ vendorId, status: BID_STATUS.UNDER_REVIEW, isDeleted: false });
+      const acceptedBids = await Bid.countDocuments({ vendorId, status: BID_STATUS.ACCEPTED, isDeleted: false });
+      const rejectedBids = await Bid.countDocuments({ vendorId, status: BID_STATUS.REJECTED, isDeleted: false });
+      const withdrawnBids = await Bid.countDocuments({ vendorId, status: BID_STATUS.WITHDRAWN, isDeleted: false });
+
+      const successRate = totalBids > 0 ? Math.round((acceptedBids / totalBids) * 100) : 0;
+
+      const bidsByStatus = await Bid.aggregate([
+        { $match: { vendorId, isDeleted: false } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]);
+
+      const bidsByMonth = await Bid.aggregate([
+        { $match: { vendorId, isDeleted: false } },
+        { 
+          $group: {
+            _id: { 
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' }
+            },
+            count: { $sum: 1 },
+            totalAmount: { $sum: '$bidAmount' }
+          }
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1 } },
+        { $limit: 12 }
+      ]);
+
+      const categoryDistribution = await Bid.aggregate([
+        { $match: { vendorId, isDeleted: false } },
+        { $lookup: { from: 'tenders', localField: 'tenderId', foreignField: '_id', as: 'tender' } },
+        { $unwind: '$tender' },
+        { $group: { _id: '$tender.category', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 }
+      ]);
+
+      const recentBids = await Bid.find({ vendorId, isDeleted: false })
+        .populate('tenderId', 'title category')
+        .sort({ createdAt: -1 })
+        .limit(10);
+
+      return {
+        success: true,
+        data: {
+          totalBids,
+          draftBids,
+          submittedBids,
+          underReviewBids,
+          acceptedBids,
+          rejectedBids,
+          withdrawnBids,
+          successRate,
+          bidsByStatus: bidsByStatus.reduce((acc, item) => {
+            acc[item._id] = item.count;
+            return acc;
+          }, {}),
+          bidsByMonth: bidsByMonth.map(item => ({
+            month: item._id.month,
+            year: item._id.year,
+            count: item.count,
+            totalAmount: item.totalAmount
+          })),
+          categoryDistribution: categoryDistribution.reduce((acc, item) => {
+            acc[item._id] = item.count;
+            return acc;
+          }, {}),
+          recentBids,
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get buyer analytics: ${error.message}`);
     }
   }
 }

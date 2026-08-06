@@ -9,6 +9,7 @@ const categoriesRoutes = require('../modules/categories/routes');
 const documentsRoutes = require('../modules/documents/routes');
 const notificationsRoutes = require('../modules/notifications/routes');
 const adminRoutes = require('../modules/admin/routes');
+const liveTendersRoutes = require('./liveTenders.routes');
 const { protect } = require('../middleware/authMiddleware');
 const { apiLimiter } = require('../middleware/rateLimiter');
 
@@ -43,7 +44,13 @@ const routes = [
     path: '/tenders',
     routes: tendersRoutes,
     description: 'Tender management endpoints',
-    public: false,
+    public: true,
+  },
+  {
+    path: '/live-tenders',
+    routes: liveTendersRoutes,
+    description: 'Live tenders from India CPPP portal',
+    public: true,
   },
   {
     path: '/bids',

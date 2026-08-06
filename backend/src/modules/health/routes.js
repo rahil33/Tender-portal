@@ -1,8 +1,11 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const packageJson = require('../../../package.json');
 const AuditLog = require('../../models/AuditLog');
+const logger = require('../../config/logger');
 
 const router = express.Router();
 
@@ -102,6 +105,114 @@ router.get('/live', (req, res) => {
     status: 'alive',
     timestamp: new Date().toISOString(),
   });
+});
+
+// Database health check
+router.get('/db', async (req, res) => {
+  try {
+    const startTime = Date.now();
+    
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        status: 'disconnected',
+        message: 'Database not connected',
+      });
+    }
+    
+    await mongoose.model('User').countDocuments();
+    const responseTime = Date.now() - startTime;
+    
+    const stats = {
+      users: await mongoose.model('User').countDocuments().catch(() => 0),
+      tenders: await mongoose.model('Tender').countDocuments().catch(() => 0),
+      bids: await mongoose.model('Bid').countDocuments().catch(() => 0),
+      organizations: await mongoose.model('Organization').countDocuments().catch(() => 0),
+    };
+    
+    res.json({
+      status: 'healthy',
+      connectionState: mongoose.connection.readyState,
+      responseTime: `${responseTime}ms`,
+      statistics: stats,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Database health check failed', { error: error.message });
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Storage health check
+router.get('/storage', async (req, res) => {
+  try {
+    const uploadPath = process.env.UPLOAD_PATH || './src/uploads';
+    const absolutePath = path.resolve(uploadPath);
+    
+    const checks = {
+      uploadDirectory: {
+        status: 'unknown',
+        message: '',
+        path: absolutePath,
+      },
+      disk: {
+        status: 'unknown',
+        message: '',
+      },
+    };
+    
+    if (fs.existsSync(absolutePath)) {
+      const stats = fs.statSync(absolutePath);
+      checks.uploadDirectory.status = stats.isDirectory() ? 'healthy' : 'unhealthy';
+      checks.uploadDirectory.message = stats.isDirectory() 
+        ? 'Upload directory exists and is accessible' 
+        : 'Upload path exists but is not a directory';
+      
+      if (!stats.isDirectory()) {
+        checks.uploadDirectory.status = 'unhealthy';
+      }
+    } else {
+      checks.uploadDirectory.status = 'unhealthy';
+      checks.uploadDirectory.message = 'Upload directory does not exist';
+    }
+    
+    const freeMemory = os.freemem();
+    const totalMemory = os.totalmem();
+    const diskUsagePercent = 100 - ((freeMemory / totalMemory) * 100);
+    
+    if (diskUsagePercent < 80) {
+      checks.disk.status = 'healthy';
+      checks.disk.message = `Disk usage: ${Math.round(diskUsagePercent)}%`;
+    } else if (diskUsagePercent < 90) {
+      checks.disk.status = 'warning';
+      checks.disk.message = `Disk usage: ${Math.round(diskUsagePercent)}% (high)`;
+    } else {
+      checks.disk.status = 'critical';
+      checks.disk.message = `Disk usage: ${Math.round(diskUsagePercent)}% (critical)`;
+    }
+    
+    const overallStatus = Object.values(checks).every(c => c.status === 'healthy')
+      ? 'healthy'
+      : Object.values(checks).some(c => c.status === 'critical')
+      ? 'critical'
+      : 'degraded';
+    
+    res.json({
+      status: overallStatus,
+      checks,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Storage health check failed', { error: error.message });
+    res.status(503).json({
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Detailed health check

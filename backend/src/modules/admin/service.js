@@ -1133,6 +1133,818 @@ class AdminService {
       throw new Error(`Failed to delete category: ${error.message}`);
     }
   }
+
+  async suspendUser(userId, reason, performedBy) {
+    try {
+      const User = require('../users/users.model');
+      const user = await User.findById(userId);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      user.isActive = false;
+      user.status = 'suspended';
+      await user.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.USER,
+        userId,
+        performedBy,
+        { action: 'suspend_user', reason }
+      );
+
+      return {
+        success: true,
+        message: 'User suspended successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to suspend user: ${error.message}`);
+    }
+  }
+
+  async reactivateUser(userId, performedBy) {
+    try {
+      const User = require('../users/users.model');
+      const user = await User.findById(userId);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      user.isActive = true;
+      user.status = 'active';
+      await user.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.USER,
+        userId,
+        performedBy,
+        { action: 'reactivate_user' }
+      );
+
+      return {
+        success: true,
+        message: 'User reactivated successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to reactivate user: ${error.message}`);
+    }
+  }
+
+  async deleteUser(userId, performedBy) {
+    try {
+      const User = require('../users/users.model');
+      const user = await User.findById(userId);
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      user.isDeleted = true;
+      user.deletedAt = new Date();
+      await user.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.DELETE,
+        AUDIT_RESOURCE_TYPES.USER,
+        userId,
+        performedBy,
+        { action: 'soft_delete_user' }
+      );
+
+      return {
+        success: true,
+        message: 'User deleted successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to delete user: ${error.message}`);
+    }
+  }
+
+  async resetUserPassword(userId, newPassword, performedBy) {
+    try {
+      const User = require('../users/users.model');
+      const bcrypt = require('bcryptjs');
+
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(newPassword, salt);
+      user.passwordChangedAt = new Date();
+      await user.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.USER,
+        userId,
+        performedBy,
+        { action: 'reset_password' }
+      );
+
+      return {
+        success: true,
+        message: 'Password reset successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to reset password: ${error.message}`);
+    }
+  }
+
+  async forceLogoutUser(userId, performedBy) {
+    try {
+      const Session = require('../auth/model').Session;
+      await Session.deleteMany({ userId });
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.USER,
+        userId,
+        performedBy,
+        { action: 'force_logout' }
+      );
+
+      return {
+        success: true,
+        message: 'User logged out from all sessions',
+      };
+    } catch (error) {
+      throw new Error(`Failed to force logout: ${error.message}`);
+    }
+  }
+
+  async getUserLoginHistory(userId, page = 1, limit = 20) {
+    try {
+      const skip = (page - 1) * limit;
+      const AuditLog = require('./model').AuditLog;
+
+      const logs = await AuditLog.find({
+        performedBy: userId,
+        action: AUDIT_ACTION_TYPES.LOGIN,
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await AuditLog.countDocuments({
+        performedBy: userId,
+        action: AUDIT_ACTION_TYPES.LOGIN,
+      });
+
+      return {
+        success: true,
+        data: {
+          data: logs,
+          pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit),
+          },
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get login history: ${error.message}`);
+    }
+  }
+
+  async suspendOrganization(organizationId, reason, performedBy) {
+    try {
+      const Organization = require('../organizations/model').Organization;
+      const org = await Organization.findById(organizationId);
+
+      if (!org) {
+        throw new Error('Organization not found');
+      }
+
+      org.isActive = false;
+      org.status = 'suspended';
+      await org.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.ORGANIZATION,
+        organizationId,
+        performedBy,
+        { action: 'suspend_organization', reason }
+      );
+
+      return {
+        success: true,
+        message: 'Organization suspended successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to suspend organization: ${error.message}`);
+    }
+  }
+
+  async reactivateOrganization(organizationId, performedBy) {
+    try {
+      const Organization = require('../organizations/model').Organization;
+      const org = await Organization.findById(organizationId);
+
+      if (!org) {
+        throw new Error('Organization not found');
+      }
+
+      org.isActive = true;
+      org.status = 'active';
+      await org.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.ORGANIZATION,
+        organizationId,
+        performedBy,
+        { action: 'reactivate_organization' }
+      );
+
+      return {
+        success: true,
+        message: 'Organization reactivated successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to reactivate organization: ${error.message}`);
+    }
+  }
+
+  async approveOrganizationDocument(documentId, performedBy) {
+    try {
+      const OrganizationDocument = require('../organizations/model').OrganizationDocument;
+      const doc = await OrganizationDocument.findById(documentId);
+
+      if (!doc) {
+        throw new Error('Document not found');
+      }
+
+      doc.status = 'verified';
+      doc.verifiedBy = performedBy;
+      doc.verifiedAt = new Date();
+      await doc.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.APPROVE,
+        AUDIT_RESOURCE_TYPES.ORGANIZATION,
+        doc.organizationId,
+        performedBy,
+        { action: 'approve_document', documentId }
+      );
+
+      return {
+        success: true,
+        message: 'Document approved successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to approve document: ${error.message}`);
+    }
+  }
+
+  async rejectOrganizationDocument(documentId, reason, performedBy) {
+    try {
+      const OrganizationDocument = require('../organizations/model').OrganizationDocument;
+      const doc = await OrganizationDocument.findById(documentId);
+
+      if (!doc) {
+        throw new Error('Document not found');
+      }
+
+      doc.status = 'rejected';
+      doc.rejectionReason = reason;
+      doc.verifiedBy = performedBy;
+      doc.verifiedAt = new Date();
+      await doc.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.REJECT,
+        AUDIT_RESOURCE_TYPES.ORGANIZATION,
+        doc.organizationId,
+        performedBy,
+        { action: 'reject_document', documentId }
+      );
+
+      return {
+        success: true,
+        message: 'Document rejected successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to reject document: ${error.message}`);
+    }
+  }
+
+  async publishTender(tenderId, performedBy) {
+    try {
+      const Tender = require('../tenders/model').Tender;
+      const tender = await Tender.findById(tenderId);
+
+      if (!tender) {
+        throw new Error('Tender not found');
+      }
+
+      tender.status = 'published';
+      tender.publishedAt = new Date();
+      await tender.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.PUBLISH,
+        AUDIT_RESOURCE_TYPES.TENDER,
+        tenderId,
+        performedBy,
+        { action: 'publish_tender' }
+      );
+
+      return {
+        success: true,
+        message: 'Tender published successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to publish tender: ${error.message}`);
+    }
+  }
+
+  async unpublishTender(tenderId, performedBy) {
+    try {
+      const Tender = require('../tenders/model').Tender;
+      const tender = await Tender.findById(tenderId);
+
+      if (!tender) {
+        throw new Error('Tender not found');
+      }
+
+      tender.status = 'draft';
+      await tender.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UNPUBLISH,
+        AUDIT_RESOURCE_TYPES.TENDER,
+        tenderId,
+        performedBy,
+        { action: 'unpublish_tender' }
+      );
+
+      return {
+        success: true,
+        message: 'Tender unpublished successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to unpublish tender: ${error.message}`);
+    }
+  }
+
+  async archiveTender(tenderId, performedBy) {
+    try {
+      const Tender = require('../tenders/model').Tender;
+      const tender = await Tender.findById(tenderId);
+
+      if (!tender) {
+        throw new Error('Tender not found');
+      }
+
+      tender.isArchived = true;
+      tender.archivedAt = new Date();
+      await tender.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.TENDER,
+        tenderId,
+        performedBy,
+        { action: 'archive_tender' }
+      );
+
+      return {
+        success: true,
+        message: 'Tender archived successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to archive tender: ${error.message}`);
+    }
+  }
+
+  async restoreTender(tenderId, performedBy) {
+    try {
+      const Tender = require('../tenders/model').Tender;
+      const tender = await Tender.findById(tenderId);
+
+      if (!tender) {
+        throw new Error('Tender not found');
+      }
+
+      tender.isArchived = false;
+      tender.archivedAt = null;
+      await tender.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.TENDER,
+        tenderId,
+        performedBy,
+        { action: 'restore_tender' }
+      );
+
+      return {
+        success: true,
+        message: 'Tender restored successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to restore tender: ${error.message}`);
+    }
+  }
+
+  async deleteTender(tenderId, performedBy) {
+    try {
+      const Tender = require('../tenders/model').Tender;
+      const tender = await Tender.findById(tenderId);
+
+      if (!tender) {
+        throw new Error('Tender not found');
+      }
+
+      tender.isDeleted = true;
+      tender.deletedAt = new Date();
+      await tender.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.DELETE,
+        AUDIT_RESOURCE_TYPES.TENDER,
+        tenderId,
+        performedBy,
+        { action: 'delete_tender' }
+      );
+
+      return {
+        success: true,
+        message: 'Tender deleted successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to delete tender: ${error.message}`);
+    }
+  }
+
+  async forceWithdrawBid(bidId, reason, performedBy) {
+    try {
+      const Bid = require('../bids/model').Bid;
+      const bid = await Bid.findById(bidId);
+
+      if (!bid) {
+        throw new Error('Bid not found');
+      }
+
+      bid.status = 'withdrawn';
+      bid.withdrawalReason = reason;
+      bid.withdrawnBy = performedBy;
+      bid.withdrawnAt = new Date();
+      await bid.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.BID,
+        bidId,
+        performedBy,
+        { action: 'force_withdraw_bid', reason }
+      );
+
+      return {
+        success: true,
+        message: 'Bid withdrawn successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to withdraw bid: ${error.message}`);
+    }
+  }
+
+  async flagBid(bidId, reason, performedBy) {
+    try {
+      const Bid = require('../bids/model').Bid;
+      const bid = await Bid.findById(bidId);
+
+      if (!bid) {
+        throw new Error('Bid not found');
+      }
+
+      bid.isFlagged = true;
+      bid.flagReason = reason;
+      bid.flaggedAt = new Date();
+      await bid.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.MODERATE,
+        AUDIT_RESOURCE_TYPES.BID,
+        bidId,
+        performedBy,
+        { action: 'flag_bid', reason }
+      );
+
+      return {
+        success: true,
+        message: 'Bid flagged successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to flag bid: ${error.message}`);
+    }
+  }
+
+  async broadcastNotification(notificationData, performedBy) {
+    try {
+      const Notification = require('../notifications/model').Notification;
+      const { title, message, type = 'info', targetAudience = 'all' } = notificationData;
+
+      const notifications = [];
+      const User = require('../users/users.model');
+
+      let query = {};
+      if (targetAudience === 'buyers') {
+        query = { role: 'buyer' };
+      } else if (targetAudience === 'sellers') {
+        query = { role: 'seller' };
+      } else if (targetAudience === 'admins') {
+        query = { role: 'admin' };
+      }
+
+      const users = await User.find(query).select('_id');
+      const userIds = users.map(u => u._id);
+
+      const notificationDocs = userIds.map(userId => ({
+        userId,
+        title,
+        message,
+        type,
+        isRead: false,
+        createdAt: new Date(),
+      }));
+
+      await Notification.insertMany(notificationDocs);
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.CREATE,
+        AUDIT_RESOURCE_TYPES.SYSTEM,
+        null,
+        performedBy,
+        { action: 'broadcast_notification', targetAudience, count: userIds.length }
+      );
+
+      return {
+        success: true,
+        message: `Notification broadcasted to ${userIds.length} users`,
+        data: { count: userIds.length },
+      };
+    } catch (error) {
+      throw new Error(`Failed to broadcast notification: ${error.message}`);
+    }
+  }
+
+  async sendTargetedNotification(userId, notificationData, performedBy) {
+    try {
+      const Notification = require('../notifications/model').Notification;
+      const { title, message, type = 'info' } = notificationData;
+
+      const notification = await Notification.create({
+        userId,
+        title,
+        message,
+        type,
+        isRead: false,
+      });
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.CREATE,
+        AUDIT_RESOURCE_TYPES.SYSTEM,
+        null,
+        performedBy,
+        { action: 'send_targeted_notification', userId }
+      );
+
+      return {
+        success: true,
+        data: notification,
+        message: 'Notification sent successfully',
+      };
+    } catch (error) {
+      throw new Error(`Failed to send notification: ${error.message}`);
+    }
+  }
+
+  async retryFailedNotification(notificationId, performedBy) {
+    try {
+      const Notification = require('../notifications/model').Notification;
+      const notification = await Notification.findById(notificationId);
+
+      if (!notification) {
+        throw new Error('Notification not found');
+      }
+
+      notification.deliveryStatus = 'pending';
+      notification.retryCount = (notification.retryCount || 0) + 1;
+      await notification.save();
+
+      await this.logAudit(
+        AUDIT_ACTION_TYPES.UPDATE,
+        AUDIT_RESOURCE_TYPES.SYSTEM,
+        notificationId,
+        performedBy,
+        { action: 'retry_notification' }
+      );
+
+      return {
+        success: true,
+        message: 'Notification retry initiated',
+      };
+    } catch (error) {
+      throw new Error(`Failed to retry notification: ${error.message}`);
+    }
+  }
+
+  async getFailedNotifications(page = 1, limit = 20) {
+    try {
+      const skip = (page - 1) * limit;
+      const Notification = require('../notifications/model').Notification;
+
+      const notifications = await Notification.find({
+        deliveryStatus: 'failed',
+      })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const total = await Notification.countDocuments({
+        deliveryStatus: 'failed',
+      });
+
+      return {
+        success: true,
+        data: {
+          data: notifications,
+          pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit),
+          },
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get failed notifications: ${error.message}`);
+    }
+  }
+
+  async getSecurityMetrics() {
+    try {
+      const AuditLog = require('./model').AuditLog;
+      const User = require('../users/users.model');
+
+      const now = new Date();
+      const last24Hours = new Date(now - 24 * 60 * 60 * 1000);
+
+      const failedLogins = await AuditLog.countDocuments({
+        action: AUDIT_ACTION_TYPES.LOGIN,
+        status: 'failure',
+        createdAt: { $gte: last24Hours },
+      });
+
+      const suspiciousActivities = await AuditLog.countDocuments({
+        status: 'failure',
+        createdAt: { $gte: last24Hours },
+      });
+
+      const activeUsers = await User.countDocuments({
+        isActive: true,
+      });
+
+      const suspendedUsers = await User.countDocuments({
+        status: 'suspended',
+      });
+
+      const blockedRequests = await AuditLog.countDocuments({
+        action: 'rate_limit_exceeded',
+        createdAt: { $gte: last24Hours },
+      });
+
+      const roleChanges = await AuditLog.countDocuments({
+        action: AUDIT_ACTION_TYPES.ASSIGN,
+        resourceType: AUDIT_RESOURCE_TYPES.USER,
+        createdAt: { $gte: last24Hours },
+      });
+
+      return {
+        success: true,
+        data: {
+          failedLogins,
+          suspiciousActivities,
+          activeUsers,
+          suspendedUsers,
+          blockedRequests,
+          roleChanges,
+          period: 'last_24_hours',
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get security metrics: ${error.message}`);
+    }
+  }
+
+  async getDetailedAnalytics(period = '30d') {
+    try {
+      const User = require('../users/users.model');
+      const Organization = require('../organizations/model').Organization;
+      const Tender = require('../tenders/model').Tender;
+      const Bid = require('../bids/model').Bid;
+
+      const now = new Date();
+      let startDate;
+      switch (period) {
+        case '7d':
+          startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case '90d':
+          startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+      }
+
+      const newUserCount = await User.countDocuments({
+        createdAt: { $gte: startDate },
+      });
+
+      const newOrganizationCount = await Organization.countDocuments({
+        createdAt: { $gte: startDate },
+      });
+
+      const newTenderCount = await Tender.countDocuments({
+        createdAt: { $gte: startDate },
+      });
+
+      const newBidCount = await Bid.countDocuments({
+        createdAt: { $gte: startDate },
+      });
+
+      const totalUsers = await User.countDocuments({});
+      const totalOrganizations = await Organization.countDocuments({});
+      const totalTenders = await Tender.countDocuments({});
+      const totalBids = await Bid.countDocuments({});
+
+      const userGrowth = ((newUserCount / (totalUsers - newUserCount || 1)) * 100).toFixed(2);
+      const organizationGrowth = ((newOrganizationCount / (totalOrganizations - newOrganizationCount || 1)) * 100).toFixed(2);
+      const tenderGrowth = ((newTenderCount / (totalTenders - newTenderCount || 1)) * 100).toFixed(2);
+      const bidGrowth = ((newBidCount / (totalBids - newBidCount || 1)) * 100).toFixed(2);
+
+      const topCategories = await Tender.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: '$category', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]);
+
+      const topBuyers = await Tender.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: '$createdBy', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]);
+
+      const topSellers = await Bid.aggregate([
+        { $match: { createdAt: { $gte: startDate } } },
+        { $group: { _id: '$vendorId', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]);
+
+      return {
+        success: true,
+        data: {
+          summary: {
+            totalUsers,
+            totalOrganizations,
+            totalTenders,
+            totalBids,
+            newUserCount,
+            newOrganizationCount,
+            newTenderCount,
+            newBidCount,
+            userGrowth: parseFloat(userGrowth),
+            organizationGrowth: parseFloat(organizationGrowth),
+            tenderGrowth: parseFloat(tenderGrowth),
+            bidGrowth: parseFloat(bidGrowth),
+          },
+          topCategories,
+          topBuyers,
+          topSellers,
+          period,
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get analytics: ${error.message}`);
+    }
+  }
 }
 
 module.exports = new AdminService();
