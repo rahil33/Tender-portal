@@ -116,7 +116,7 @@ export default function TrainingModulesPage() {
             
             <div className="space-y-4 mb-8">
               {[
-                'GeM Registration & Onboarding',
+                'GeM Registration and Profile Completion',
                 'Tender Document Preparation',
                 'Bid Submission Support',
                 'MSME & ISO Certification Guidance',

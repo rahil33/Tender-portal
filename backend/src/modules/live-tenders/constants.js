@@ -4,8 +4,7 @@
 
 const SOURCE_PORTALS = {
   CPPP: 'CPPP',
-  EPROCUREMENT: 'eProcurement',
-  EPUBLISH: 'ePublish',
+  GEM: 'GEM',
 };
 
 const SOURCE_PORTAL_VALUES = Object.values(SOURCE_PORTALS);

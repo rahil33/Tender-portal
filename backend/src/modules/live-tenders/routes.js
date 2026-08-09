@@ -14,7 +14,7 @@ router.get('/departments', liveTenderController.getDepartments);
 router.get('/categories', liveTenderController.getCategories);
 router.get('/statistics', liveTenderController.getStatistics);
 router.get('/sync-status', liveTenderController.getSyncStatus);
-router.get('/:cpppId', liveTenderController.getTenderById);
+router.get('/:tenderId', liveTenderController.getTenderById);
 
 /**
  * Admin Only Routes - Authentication required

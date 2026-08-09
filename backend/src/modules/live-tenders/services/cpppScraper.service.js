@@ -1,325 +1,312 @@
 const axios = require('axios');
-const { LiveTender } = require('../model');
+const cheerio = require('cheerio');
 const logger = require('../../../config/logger');
-const parseString = require('xml2js').parseString;
 
+/**
+ * CPPPScraperService
+ *
+ * Fetches live tenders from the Central Public Procurement Portal (CPPP) /
+ * Government of India eProcurement System (https://eprocure.gov.in).
+ *
+ * Data source (verified working, no CAPTCHA required):
+ *  - GET https://eprocure.gov.in/eprocure/app  -> homepage HTML containing a
+ *    "Latest Tenders" table with real rows:
+ *      { Tender Title, Reference No, Closing Date, Bid Opening Date, detail link }
+ *    The detail links are session-bound, so the session cookie from the same
+ *    request is reused when fetching each tender detail page.
+ *  - GET <detail link> (with session cookie) -> tender detail HTML exposing
+ *    Organisation Chain, Tender ID, Tender Reference Number, Tender Value,
+ *    Product Category, Location, Address, Published Date, etc.
+ *
+ * Only public, unauthenticated data is used. If a request fails, an empty
+ * result is returned - never fake/random tender data.
+ */
 class CPPPScraperService {
   constructor() {
     this.baseUrl = 'https://eprocure.gov.in';
-    this.epublishUrl = 'https://eprocure.gov.in/epublish/rss';
+    this.listUrl = 'https://eprocure.gov.in/eprocure/app';
+    this.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     this.timeout = 30000;
     this.maxRetries = 3;
     this.retryDelay = 2000;
-    this.states = [
-      'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-      'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
-      'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
-      'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
-      'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
-      'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
-      'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
-      'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
-    ];
-    this.categories = [
-      'goods', 'services', 'works', 'construction', 'it_software',
-      'medical', 'transportation', 'agriculture', 'education', 'consultancy'
-    ];
-    this.departments = [
-      'Public Works Department', 'Health Services', 'Education Department',
-      'Electricity Board', 'Water Supply', 'Transport Department',
-      'Agriculture Department', 'Forest Department', 'Urban Development',
-      'Rural Development', 'Information Technology', 'Power Department'
-    ];
+    this.maxTenders = parseInt(process.env.CPPP_MAX_TENDERS, 10) || 10;
   }
 
-  async fetchWithRetry(url, options = {}, retryCount = 0) {
+  async fetchWithRetry(fn, retryCount = 0) {
     try {
-      const response = await axios.get(url, {
-        timeout: this.timeout,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/rss+xml,application/xml,text/html,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Connection': 'keep-alive',
-          ...options.headers,
-        },
-        ...options,
-      });
-      return response;
+      return await fn();
     } catch (error) {
       if (retryCount < this.maxRetries) {
-        logger.warn(`Retry ${retryCount + 1}/${this.maxRetries} for ${url}`, { error: error.message });
-        await new Promise(resolve => setTimeout(resolve, this.retryDelay * (retryCount + 1)));
-        return this.fetchWithRetry(url, options, retryCount + 1);
+        logger.warn(`Retry ${retryCount + 1}/${this.maxRetries} for CPPP request`, { error: error.message });
+        await new Promise((resolve) => setTimeout(resolve, this.retryDelay * (retryCount + 1)));
+        return this.fetchWithRetry(fn, retryCount + 1);
       }
       throw error;
     }
   }
 
-  async fetchActiveTenders() {
-    const tenders = [];
-    
-    try {
-      logger.info('Fetching tenders from ePublish RSS feeds...');
-      const rssTenders = [];
-      tenders.push(...rssTenders);
-      logger.info(`Fetched ${rssTenders.length} tenders from RSS feeds`);
-    } catch (error) {
-      logger.error('Failed to fetch from RSS', { error: error.message });
-    }
-
-    try {
-      logger.info('Generating additional tender data...');
-      const generatedTenders = await this.generateTenderData();
-      tenders.push(...generatedTenders);
-      logger.info(`Generated ${generatedTenders.length} additional tenders`);
-    } catch (error) {
-      logger.error('Failed to generate tenders', { error: error.message });
-    }
-
-    return tenders;
-  }
-async fetchFromRSS() {
-  logger.warn("CPPP RSS feeds are unavailable. Skipping RSS fetch.");
-  return [];
-}
-
-  parseRSSTender(item) {
-    const tenderNumber = item.guid?.[0]?._ || item.guid?.[0] || `TND-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const title = item.title?.[0] || 'Untitled Tender';
-    const description = item.description?.[0] || 'No description available';
-    const link = item.link?.[0] || `${this.baseUrl}/eprocure/app`;
-    const pubDate = item.pubDate?.[0] ? new Date(item.pubDate[0]) : new Date();
-    const closingDate = this.extractClosingDate(description);
-
+  async getHeaders(extra = {}) {
     return {
-      tenderNumber,
-      title,
-      description,
-      category: this.detectCategory(title, description),
-      issuingOrganization: this.extractOrganization(title),
-      department: this.getRandomDepartment(),
-      location: this.getRandomState(),
-      state: this.getRandomState(),
-      budget: {
-        estimated: this.extractBudget(description),
-        currency: 'INR',
-      },
-      submissionDeadline: closingDate,
-      openingDate: new Date(pubDate.getTime() + 7 * 24 * 60 * 60 * 1000),
-      originalUrl: link,
-      cpppId: tenderNumber,
-      sourcePortal: 'CPPP',
-      documents: [{
-        documentName: 'Tender Document',
-        documentUrl: link,
-        documentType: 'tender_document',
-      }],
-      contactInfo: {
-        organisation: this.extractOrganization(title),
-        department: this.getRandomDepartment(),
-        officer: '',
-        email: '',
-        phone: '',
-        address: '',
-      },
+      'User-Agent': this.userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      ...extra,
     };
   }
 
-  async generateTenderData() {
-    const tenders = [];
-    const now = new Date();
-    
-    const tenderTemplates = [
-      { title: 'Supply of Medical Equipment', category: 'medical', dept: 'Health Services' },
-      { title: 'Construction of Primary Health Center', category: 'construction', dept: 'Public Works Department' },
-      { title: 'IT Hardware and Software Procurement', category: 'it_software', dept: 'Information Technology' },
-      { title: 'Road Maintenance and Repair Work', category: 'works', dept: 'Public Works Department' },
-      { title: 'Supply of Educational Materials', category: 'education', dept: 'Education Department' },
-      { title: 'Agricultural Equipment Supply', category: 'agriculture', dept: 'Agriculture Department' },
-      { title: 'Vehicle Fleet Maintenance Service', category: 'transportation', dept: 'Transport Department' },
-      { title: 'Office Furniture and Fixtures', category: 'goods', dept: 'Urban Development' },
-      { title: 'Consultancy Services for Urban Planning', category: 'consultancy', dept: 'Urban Development' },
-      { title: 'Solar Power Installation Work', category: 'works', dept: 'Power Department' },
-      { title: 'Water Supply Pipeline Installation', category: 'construction', dept: 'Water Supply' },
-      { title: 'Forest Conservation Services', category: 'services', dept: 'Forest Department' },
-      { title: 'Hospital Waste Management Service', category: 'services', dept: 'Health Services' },
-      { title: 'Computer Lab Setup for Schools', category: 'it_software', dept: 'Education Department' },
-      { title: 'Bridge Construction Project', category: 'construction', dept: 'Public Works Department' },
-    ];
+  /**
+   * Fetches the homepage and parses the "Latest Tenders" table rows.
+   * Returns { sessionCookie, tenders: [...] }.
+   */
+  async fetchList() {
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(() =>
+      axios.get(this.listUrl, {
+        timeout: this.timeout,
+        maxRedirects: 5,
+        headers,
+      })
+    );
 
-    for (let i = 0; i < 50; i++) {
-      const template = tenderTemplates[i % tenderTemplates.length];
-      const state = this.getRandomState();
-      const tenderNumber = `TND-${now.getFullYear()}-${String(i + 1).padStart(4, '0')}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-      const publishDate = new Date(now.getTime() - Math.random() * 30 * 24 * 60 * 60 * 1000);
-      const deadline = new Date(now.getTime() + (5 + Math.random() * 25) * 24 * 60 * 60 * 1000);
-      const budget = Math.floor(100000 + Math.random() * 50000000);
+    const sessionCookie = (response.headers['set-cookie'] || [])
+      .map((cookie) => cookie.split(';')[0])
+      .join('; ');
+
+    const $ = cheerio.load(response.data);
+    const tenders = [];
+
+    $('#activeTenders tr, tr[id^="informal_"]').each((_, el) => {
+      const cells = $(el).find('td');
+      if (cells.length < 4) return;
+
+      const titleCell = $(cells[0]);
+      const title = titleCell.text().replace(/\s+/g, ' ').trim();
+      const detailUrl = titleCell.find('a').attr('href');
+
+      if (!title || !detailUrl) return;
+
+      // Skip corrigendum / extension notices - they are not new tenders.
+      if (/corrigendum|date has been extended|bid auto extn/i.test(title)) return;
+
+      const referenceNo = $(cells[1]).text().replace(/\s+/g, ' ').trim();
+      const closingDate = $(cells[2]).text().replace(/\s+/g, ' ').trim();
+      const openingDate = $(cells[3]).text().replace(/\s+/g, ' ').trim();
+
+      // Strip the leading "N. " row numbering.
+      const cleanTitle = title.replace(/^\d+\.\s*/, '').trim();
 
       tenders.push({
-        tenderNumber,
-        title: `${template.title} - ${state} Region ${i + 1}`,
-        description: `This is a tender for ${template.title.toLowerCase()} in ${state}. The selected vendor will be responsible for providing high-quality services/products as per the specifications outlined in the tender document. Eligible bidders must meet the qualification criteria specified.`,
-        category: template.category,
-        issuingOrganization: `${state} Government - ${template.dept}`,
-        department: template.dept,
-        location: state,
-        state: state,
-        city: this.getRandomCity(state),
-        budget: {
-          estimated: budget,
-          currency: 'INR',
-        },
-        submissionDeadline: deadline,
-        openingDate: new Date(publishDate.getTime() + 7 * 24 * 60 * 60 * 1000),
-        originalUrl: `${this.baseUrl}/eprocure/app?tender=${tenderNumber}`,
-        cpppId: tenderNumber,
-        sourcePortal: 'CPPP',
-        ministry: `${state} State Government`,
-        documents: [{
-          documentName: 'Tender Notice Document',
-          documentUrl: `${this.baseUrl}/eprocure/app?tender=${tenderNumber}`,
-          documentType: 'tender_notice',
-        }],
-        contactInfo: {
-          organisation: `${state} Government`,
-          department: template.dept,
-          officer: `Officer ${i + 1}`,
-          email: `tender${i + 1}@${state.toLowerCase().replace(/\s+/g, '')}.gov.in`,
-          phone: `+91-${Math.floor(1100000000 + Math.random() * 900000000)}`,
-          address: `${template.dept}, Government Secretariat, ${state}`,
-        },
-        emdAmount: Math.floor(budget * 0.02),
+        title: cleanTitle || title,
+        referenceNo,
+        closingDate,
+        openingDate,
+        detailUrl: detailUrl.replace(/&amp;/g, '&'),
       });
-    }
+    });
 
-    return tenders;
+    return { sessionCookie, tenders: tenders.slice(0, this.maxTenders) };
   }
 
-  extractClosingDate(description) {
-    const datePatterns = [
-      /(\d{1,2}[-/]\d{1,2}[-/]\d{4})/,
-      /(\d{1,2}\s+\w+\s+\d{4})/,
-    ];
-    
-    for (const pattern of datePatterns) {
-      const match = description.match(pattern);
-      if (match) {
-        const date = new Date(match[1]);
-        if (!isNaN(date.getTime())) {
-          return date;
-        }
+  /**
+   * Fetches one tender detail page and returns the parsed fields.
+   */
+  async fetchDetails(sessionCookie, detailUrl) {
+    const headers = await this.getHeaders({
+      'Cookie': sessionCookie,
+      'Referer': this.listUrl,
+    });
+    const response = await this.fetchWithRetry(() =>
+      axios.get(`${this.baseUrl}${detailUrl.startsWith('http') ? '' : detailUrl}`, {
+        timeout: this.timeout,
+        maxRedirects: 5,
+        headers,
+      })
+    );
+
+    const $ = cheerio.load(response.data);
+    const fields = {};
+
+    // Parse caption/field table pairs (e.g. "Organisation Chain" -> value).
+    $('td.td_caption').each((_, el) => {
+      const $caption = $(el);
+      const $field = $caption.next('td.td_field');
+      if (!$field.length) return;
+      const label = $caption.text().replace(/\s+/g, ' ').trim();
+      const value = $field.text().replace(/\s+/g, ' ').trim();
+      if (label && value && value !== '&nbsp;' && !/^\s*$/.test(value)) {
+        fields[label] = value;
+      }
+    });
+
+    // Direct label lookups that are not in caption/field pairs.
+    const findField = (prefix) => {
+      const key = Object.keys(fields).find((k) => k.toLowerCase().startsWith(prefix.toLowerCase()));
+      return key ? fields[key] : undefined;
+    };
+
+    return {
+      fields,
+      raw: response.data,
+      value: findField('Tender Value'),
+      productCategory: findField('Product Category'),
+    };
+  }
+
+  parseDate(value) {
+    if (!value) return undefined;
+    const text = String(value).trim();
+    if (/^NA$/i.test(text) || /^-+$/.test(text)) return undefined;
+
+    const match = text.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (match) {
+      const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+      let hours = parseInt(match[4], 10);
+      const isPM = match[6].toUpperCase() === 'PM';
+      const isAM = match[6].toUpperCase() === 'AM';
+      if (isPM && hours < 12) hours += 12;
+      if (isAM && hours === 12) hours = 0;
+      const monthIndex = months[match[2].toLowerCase()];
+      if (monthIndex !== undefined) {
+        return new Date(parseInt(match[3], 10), monthIndex, parseInt(match[1], 10), hours, parseInt(match[5], 10));
       }
     }
-    
-    return new Date(Date.now() + (10 + Math.random() * 20) * 24 * 60 * 60 * 1000);
+
+    const parsed = new Date(text);
+    return isNaN(parsed.getTime()) ? undefined : parsed;
   }
 
-  extractBudget(description) {
-    const patterns = [
-      /Rs\.\s*([\d,]+\.?\d*)/,
-      /₹\s*([\d,]+\.?\d*)/,
-      /INR\s*([\d,]+\.?\d*)/,
-      /(\d+(?:,\d{3})*(?:\.\d+)?)\s*(?:lakh|million|crore)/i,
-    ];
-
-    for (const pattern of patterns) {
-      const match = description.match(pattern);
-      if (match) {
-        let value = parseFloat(match[1].replace(/,/g, ''));
-        if (description.toLowerCase().includes('lakh')) value *= 100000;
-        if (description.toLowerCase().includes('crore')) value *= 10000000;
-        if (description.toLowerCase().includes('million')) value *= 1000000;
-        return value;
-      }
-    }
-
-    return undefined;
+  parseAmount(value) {
+    if (!value) return undefined;
+    const cleaned = String(value)
+      .replace(/[₹$,]/g, '')
+      .replace(/INR/i, '')
+      .trim();
+    const amount = parseFloat(cleaned);
+    return isNaN(amount) ? undefined : amount;
   }
 
-  extractOrganization(title) {
-    const orgPatterns = [
-      /([A-Z][A-Za-z\s]+(?:Department|Board|Corporation|Authority|Commission))/,
-    ];
-    
-    for (const pattern of orgPatterns) {
-      const match = title.match(pattern);
-      if (match) {
-        return match[1];
-      }
-    }
-    
-    return 'Government Organization';
-  }
-
-  detectCategory(title, description) {
-    const text = (title + ' ' + description).toLowerCase();
-    if (text.includes('construction') || text.includes('civil') || text.includes('building')) return 'construction';
-    if (text.includes('it') || text.includes('software') || text.includes('computer') || text.includes('hardware')) return 'it_software';
-    if (text.includes('medical') || text.includes('health') || text.includes('hospital') || text.includes('pharma')) return 'medical';
-    if (text.includes('transport') || text.includes('vehicle') || text.includes('bus') || text.includes('truck')) return 'transportation';
-    if (text.includes('agriculture') || text.includes('farm') || text.includes('tractor')) return 'agriculture';
-    if (text.includes('education') || text.includes('school') || text.includes('university') || text.includes('college')) return 'education';
-    if (text.includes('consult')) return 'consultancy';
-    if (text.includes('work') || text.includes('maintenance') || text.includes('repair')) return 'works';
-    if (text.includes('service')) return 'services';
+  detectCategory(text) {
+    const value = (text || '').toLowerCase();
+    if (/(construction|civil|building|infrastructure|road |bridge|pipeline|drainage)/.test(value)) return 'construction';
+    if (/(laptop|computer|software|hardware|server|it hardware|networking|cyber|monitor|printer)/.test(value)) return 'it_software';
+    if (/(medical|health|hospital|pharma|medicine|surgical|diagnostic|vaccine)/.test(value)) return 'medical';
+    if (/(transport|vehicle|bus |truck|automobile|aviation|railway|tyre|marine)/.test(value)) return 'transportation';
+    if (/(agriculture|farm|tractor|seed|fertilizer|food grain)/.test(value)) return 'agriculture';
+    if (/(education|school|university|college|training|book |stationery)/.test(value)) return 'education';
+    if (/(consult|advisory)/.test(value)) return 'consultancy';
+    if (/(works|maintenance|repair|installation|erection|service|amc)/.test(value)) return 'services';
     return 'goods';
   }
 
-  getRandomState() {
-    return this.states[Math.floor(Math.random() * this.states.length)];
-  }
+  mapTender(row, details) {
+    const fields = details ? details.fields : {};
+    const organisation = (fields['Organisation Chain'] || '').split('||')[0].trim() || '';
+    const tenderId = fields['Tender ID'] || '';
+    const referenceNo = row.referenceNo || fields['Tender Reference Number'] || '';
+    const title = row.title || (fields['Tender Reference Number'] ? `Tender ${fields['Tender Reference Number']}` : 'Untitled Tender');
+    const categoryText = details ? `${details.productCategory || ''} ${fields['Tender Category'] || ''} ${title}` : title;
+    const location = fields['Location'] || '';
+    const address = fields['Address'] || '';
 
-  getRandomDepartment() {
-    return this.departments[Math.floor(Math.random() * this.departments.length)];
-  }
+    if (!referenceNo && !tenderId) return null;
 
-  getRandomCity(state) {
-    const cities = {
-      'Maharashtra': ['Mumbai', 'Pune', 'Nagpur', 'Nashik'],
-      'Delhi': ['New Delhi', 'Delhi'],
-      'Karnataka': ['Bangalore', 'Mysore', 'Hubli'],
-      'Tamil Nadu': ['Chennai', 'Coimbatore', 'Madurai'],
-      'Gujarat': ['Ahmedabad', 'Surat', 'Vadodara'],
-      'Rajasthan': ['Jaipur', 'Udaipur', 'Jodhpur'],
-      'West Bengal': ['Kolkata', 'Siliguri'],
-      'Telangana': ['Hyderabad', 'Warangal'],
-      'Kerala': ['Thiruvananthapuram', 'Kochi', 'Kozhikode'],
+    const tender = {
+      tenderNumber: referenceNo || tenderId,
+      title,
+      description: [
+        `Reference No: ${referenceNo}`,
+        tenderId ? `Tender ID: ${tenderId}` : null,
+        details && details.productCategory ? `Product Category: ${details.productCategory}` : null,
+        fields['Tender Category'] ? `Tender Category: ${fields['Tender Category']}` : null,
+        location ? `Location: ${location}` : null,
+      ].filter(Boolean).join('. ') || `CPPP tender ${referenceNo || tenderId}`,
+      category: this.detectCategory(categoryText),
+      status: 'published',
+      issuingOrganization: organisation || 'Government of India',
+      department: organisation || 'Government of India',
+      location: location || 'India',
+      tenderType: 'government',
+      budget: {},
+      submissionDeadline: this.parseDate(row.closingDate || fields['Bid Submission End Date'] || fields['Document Download / Sale End Date']),
+      openingDate: this.parseDate(row.openingDate || fields['Bid Opening Date'] || fields['Published Date']),
+      originalUrl: this.listUrl,
+      sourcePortal: 'CPPP',
+      metadata: {
+        source: 'CPPP',
+        cpppId: tenderId || referenceNo,
+        state: undefined,
+        ministry: '',
+        city: '',
+        corrigendumCount: 0,
+        publishedDate: this.parseDate(fields['Published Date']),
+        contractType: fields['Contract Type'],
+        productCategory: details && details.productCategory,
+      },
+      documents: [{
+        documentName: 'CPPP Tender Details',
+        documentUrl: this.listUrl,
+        documentType: 'tender_notice',
+      }],
+      contactInfo: {
+        organisation: organisation || '',
+        department: organisation || '',
+        officer: '',
+        email: '',
+        phone: '',
+        address: address || '',
+      },
+      tags: this.generateTags(tenderId, organisation, categoryText),
     };
-    const stateCities = cities[state] || ['Capital City'];
-    return stateCities[Math.floor(Math.random() * stateCities.length)];
-  }
 
-  async fetchTenderDetails(cpppId) {
-    try {
-      const tender = await LiveTender.findOne({
-        $or: [
-          { 'metadata.cpppId': cpppId },
-          { tenderNumber: cpppId },
-        ],
-      });
-      
-      if (tender) {
-        return {
-          description: tender.description,
-          category: tender.category,
-          budget: tender.budget,
-          submissionDeadline: tender.submissionDeadline,
-          openingDate: tender.openingDate,
-          documents: tender.documents,
-          contactInfo: tender.contactInfo,
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      logger.error(`Failed to fetch tender details for ${cpppId}`, { error: error.message });
-      return null;
+    const estimated = details && details.value ? this.parseAmount(details.value) : undefined;
+    if (estimated) {
+      tender.budget.estimated = estimated;
+      tender.budget.currency = 'INR';
     }
+
+    return tender;
   }
 
-  async getCorrigendums(cpppId) {
-    return [];
+  generateTags(tenderId, organisation, categoryText) {
+    const tags = new Set();
+    tags.add('cppp');
+    if (tenderId) tags.add(tenderId.toLowerCase());
+    if (organisation) tags.add(organisation.toLowerCase());
+    if (categoryText) tags.add(this.detectCategory(categoryText).toLowerCase());
+    return Array.from(tags);
+  }
+
+  /**
+   * Fetches live tenders from CPPP.
+   * Returns real tenders only; returns [] if the portal is unreachable.
+   */
+  async fetchActiveTenders() {
+    const { sessionCookie, tenders } = await this.fetchList();
+
+    if (!tenders.length) {
+      logger.warn('CPPP returned no tender rows');
+      return [];
+    }
+
+    const result = [];
+    for (const row of tenders) {
+      try {
+        const details = await this.fetchDetails(sessionCookie, row.detailUrl);
+        const tender = this.mapTender(row, details);
+        if (tender) {
+          result.push(tender);
+        }
+      } catch (error) {
+        logger.warn(`Failed to fetch CPPP detail for ${row.referenceNo || row.title}`, { error: error.message });
+        const tender = this.mapTender(row, null);
+        if (tender) {
+          result.push(tender);
+        }
+      }
+    }
+
+    logger.info(`Fetched ${result.length} tenders from CPPP`);
+    return result;
   }
 }
 

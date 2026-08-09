@@ -13,7 +13,7 @@ export const TenderList: React.FC = () => {
   useEffect(() => {
     const fetchTenders = async () => {
       try {
-        // First try to get live tenders from CPPP sync
+        // First try to get live tenders from GeM sync
         const response = await liveTenderService.getLiveTenders({
           page: 1,
           limit: 4,
@@ -65,6 +65,34 @@ export const TenderList: React.FC = () => {
             >
               Retry
             </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (tenders.length === 0) {
+    return (
+      <section className="py-24 relative overflow-hidden bg-[#F8FAFC]">
+        <div className="max-w-[1200px] mx-auto px-4 relative z-10">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+            <div className="max-w-2xl">
+              <span className="font-bold uppercase tracking-widest text-sm mb-3 block text-[#2563EB]">Market Opportunities</span>
+              <h2 className="text-4xl font-bold mb-4 text-[#111827]">Latest Active Tenders</h2>
+              <p className="text-lg leading-relaxed text-[#6B7280]">
+                Real-time feed of the most recent government and private sector procurement opportunities across India.
+              </p>
+            </div>
+            <Link
+              to="/tenders"
+              className="px-6 py-2.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-2 text-white bg-[#111827] hover:bg-[#2563EB] shadow-md"
+            >
+              Browse All <ExternalLink size={18} />
+            </Link>
+          </div>
+          <div className="p-12 bg-white border border-[#E5E7EB] rounded-2xl text-center">
+            <p className="text-lg font-bold text-[#111827] mb-2">No live tenders available at the moment</p>
+            <p className="text-sm text-[#6B7280]">New tenders are synced automatically. Please check back shortly.</p>
           </div>
         </div>
       </section>
@@ -164,6 +192,15 @@ export const TenderList: React.FC = () => {
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-[#F3F4F6] border border-[#E5E7EB] text-[#6B7280]">
                           {tender.tenderNumber}
                         </span>
+                        {tender.sourcePortal && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                            tender.sourcePortal === 'GEM'
+                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                              : 'bg-purple-50 text-purple-700 border border-purple-200'
+                          }`}>
+                            {tender.sourcePortal === 'GEM' ? 'GeM' : 'CPPP'}
+                          </span>
+                        )}
                         <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[#6B7280]">
                           <Tag size={12} /> {tender.category}
                         </span>
@@ -197,7 +234,9 @@ export const TenderList: React.FC = () => {
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2 text-sm font-bold text-[#EF4444]">
                         <Clock size={16} />
-                        {new Date(tender.submissionDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {tender.submissionDeadline
+                          ? new Date(tender.submissionDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : 'N/A'}
                       </div>
                       <div className="w-full h-1 rounded-full overflow-hidden bg-[#E5E7EB]">
                         <div className="h-full w-[30%] bg-[#EF4444]"></div>
@@ -230,9 +269,22 @@ export const TenderList: React.FC = () => {
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-[#F3F4F6] text-[#6B7280]">
                   {tender.tenderNumber}
                 </span>
-                <span className="text-xs font-bold flex items-center gap-1 text-[#EF4444]">
-                  <Clock size={14} />
-                  {new Date(tender.submissionDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                <span className="flex items-center gap-2">
+                  {tender.sourcePortal && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                      tender.sourcePortal === 'GEM'
+                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                        : 'bg-purple-50 text-purple-700 border border-purple-200'
+                    }`}>
+                      {tender.sourcePortal === 'GEM' ? 'GeM' : 'CPPP'}
+                    </span>
+                  )}
+                  <span className="text-xs font-bold flex items-center gap-1 text-[#EF4444]">
+                    <Clock size={14} />
+                    {tender.submissionDeadline
+                      ? new Date(tender.submissionDeadline).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+                      : 'N/A'}
+                  </span>
                 </span>
               </div>
               <div>

@@ -210,7 +210,7 @@ app.use('/api/organizations', organizationsRoutes);
 app.use('/api/tenders', tendersRoutes);
 
 /**
- * Live Tenders Module Routes (CPPP Sync)
+ * Live Tenders Module Routes (GeM Sync)
  * All routes are prefixed with /api/live-tenders
  */
 app.use('/api/live-tenders', liveTendersRoutes);

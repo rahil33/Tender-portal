@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router';
-import { Target, Users, Award, TrendingUp, Shield, Heart, MapPin, Phone, Mail, Linkedin, ArrowRight, CheckCircle } from 'lucide-react';
+import { Target, Users, Award, TrendingUp, Shield, Heart, MapPin, Phone, Mail, ArrowRight, CheckCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
 const fadeUp = { initial: { opacity: 0, y: 20 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true } };
@@ -23,15 +23,6 @@ export default function AboutPage() {
     { year: '2020', title: 'Digital Platform', desc: 'Launched online portal for real-time tender tracking and digital consultation services.' },
     { year: '2022', title: 'Industry Recognition', desc: '"Best Tender Consultancy" — Indian SME Association. ISO 9001:2015 certified.' },
     { year: '2024', title: 'Continued Growth', desc: 'Expanding nationwide with 3,800+ sellers and ₹940Cr+ in transactions facilitated.' },
-  ];
-
-  const team = [
-    { name: 'Rajesh Sharma', role: 'Founder & CEO', exp: '15+ years in Government Procurement', initials: 'RS' },
-    { name: 'Priya Patel', role: 'Head of GeM Services', exp: '10+ years in GeM Consultancy', initials: 'PP' },
-    { name: 'Amit Kumar', role: 'Tender Specialist', exp: '8+ years in Tender Management', initials: 'AK' },
-    { name: 'Sneha Reddy', role: 'Legal Compliance Head', exp: '12+ years in Legal & Compliance', initials: 'SR' },
-    { name: 'Vikram Singh', role: 'Training & Support Manager', exp: '7+ years in Client Training', initials: 'VS' },
-    { name: 'Anita Desai', role: 'Operations Director', exp: '9+ years in Operations', initials: 'AD' },
   ];
 
   const stats = [
@@ -103,7 +94,7 @@ export default function AboutPage() {
             <div className="relative">
               <img
                 src="https://images.unsplash.com/photo-1590650516494-0c8e4a4dd67e?w=700&h=520&fit=crop&auto=format"
-                alt="Our Team"
+                alt="About Phoenix Tender Tech"
                 className="w-full rounded-2xl border border-gray-100 shadow-md"
               />
             </div>
@@ -165,35 +156,6 @@ export default function AboutPage() {
                 <div className="w-12 h-12 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center mx-auto mb-5 text-gray-700">{v.icon}</div>
                 <h3 className="font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins, sans-serif' }}>{v.title}</h3>
                 <p className="text-sm text-gray-500 leading-relaxed">{v.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Team ──────────────────────────────────────── */}
-      <section className="py-24 bg-white">
-        <div className="max-w-[1280px] mx-auto px-6 md:px-8 lg:px-12">
-          <div className="text-center max-w-xl mx-auto mb-16">
-            <Eyebrow>Meet the Team</Eyebrow>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900" style={{ fontFamily: 'Poppins, sans-serif' }}>Our Leadership Team</h2>
-            <p className="text-gray-500 mt-4">Experienced professionals dedicated to your success.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {team.map((m, i) => (
-              <motion.div key={i} {...fadeUp} transition={{ duration: 0.4, delay: i * 0.07 }}
-                className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-                <div className="h-28 bg-[#F8FAFC] border-b border-gray-100 flex items-center justify-center">
-                  <div className="w-20 h-20 rounded-full bg-white border border-gray-200 flex items-center justify-center text-xl font-bold text-gray-700 shadow-sm">{m.initials}</div>
-                </div>
-                <div className="p-6 text-center">
-                  <h3 className="font-bold text-gray-900 mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>{m.name}</h3>
-                  <p className="text-sm font-medium text-gray-600 mb-1">{m.role}</p>
-                  <p className="text-xs text-gray-400 mb-4">{m.exp}</p>
-                  <button className="w-9 h-9 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center mx-auto text-gray-500 hover:bg-gray-100 transition-colors">
-                    <Linkedin size={16} />
-                  </button>
-                </div>
               </motion.div>
             ))}
           </div>

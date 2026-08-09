@@ -1,5 +1,7 @@
 import api from './api';
 
+export type TenderSourcePortal = 'GEM' | 'CPPP';
+
 export interface LiveTender {
   _id?: string;
   tenderNumber: string;
@@ -20,14 +22,18 @@ export interface LiveTender {
   department: string;
   tenderType: 'government';
   tags: string[];
+  sourcePortal?: TenderSourcePortal;
   metadata: {
-    source: 'CPPP';
+    source: 'GEM' | 'CPPP';
     originalUrl: string;
-    cpppId: string;
+    gemBidId?: string;
+    cpppId?: string;
     ministry?: string;
     state?: string;
     city?: string;
     corrigendumCount?: number;
+    contractType?: string;
+    productCategory?: string;
   };
   documents: Array<{
     documentName: string;
@@ -53,6 +59,7 @@ export interface LiveTenderFilters {
   location?: string;
   state?: string;
   status?: string;
+  sourcePortal?: TenderSourcePortal;
   isArchived?: boolean;
 }
 
@@ -80,6 +87,7 @@ export const liveTenderService = {
     if (filters.location) params.append('location', filters.location);
     if (filters.state) params.append('state', filters.state);
     if (filters.status) params.append('status', filters.status);
+    if (filters.sourcePortal) params.append('sourcePortal', filters.sourcePortal);
 
 if (filters.isArchived !== undefined)
   params.append('isArchived', String(filters.isArchived));
@@ -113,14 +121,14 @@ if (filters.isArchived !== undefined)
     return response.data.data;
   },
 
-  async getTenderDetails(cpppId: string) {
-    const response = await api.get<{ success: boolean; data: any }>(`/live-tenders/${cpppId}`);
+  async getTenderDetails(tenderId: string) {
+    const response = await api.get<{ success: boolean; data: any }>(`/live-tenders/${tenderId}`);
     return response.data;
   },
 
-  async downloadDocument(cpppId: string, documentUrl: string) {
+  async downloadDocument(tenderId: string, documentUrl: string) {
     const response = await api.post(
-      `/live-tenders/${cpppId}/download`,
+      `/live-tenders/${tenderId}/download`,
       { documentUrl },
       { responseType: 'blob' }
     );

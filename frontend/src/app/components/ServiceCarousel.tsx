@@ -17,7 +17,7 @@ const SERVICES = [
     icon: Package,
     title: 'GeM Registration',
     slug: 'gem-registration',
-    desc: 'Seamless onboarding & catalog setup on Government e-Marketplace.',
+    desc: 'Seamless registration & 100% profile completion on Government e-Marketplace.',
     accent: '#16A34A',
   },
   {

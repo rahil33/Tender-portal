@@ -55,7 +55,6 @@ const tenderSchema = new mongoose.Schema(
     },
     submissionDeadline: {
       type: Date,
-      required: true,
       index: true,
     },
     openingDate: {
@@ -96,10 +95,13 @@ const tenderSchema = new mongoose.Schema(
         type: String,
         required: true,
       },
+      gemBidId: {
+        type: String,
+        index: true,
+      },
       cpppId: {
         type: String,
-        required: true,
-        unique: true,
+        index: true,
       },
       ministry: {
         type: String,
@@ -119,6 +121,12 @@ const tenderSchema = new mongoose.Schema(
       boqUrl: String,
       corrigendumUrl: String,
       tenderPdfUrl: String,
+      contractType: String,
+      productCategory: String,
+      bidType: Number,
+      isHighValue: Boolean,
+      isRateContract: Boolean,
+      isGlobalTendering: Boolean,
     },
     documents: [{
       documentName: String,
@@ -144,7 +152,7 @@ const tenderSchema = new mongoose.Schema(
       type: String,
       required: true,
       default: 'CPPP',
-      enum: ['CPPP', 'eProcurement', 'ePublish'],
+      enum: ['CPPP', 'eProcurement', 'ePublish', 'GeM', 'GEM'],
     },
     lastSyncedAt: {
       type: Date,

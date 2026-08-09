@@ -1,6 +1,15 @@
 const liveTenderSyncService = require('./service');
 const { LiveTender } = require('./model');
 
+const SOURCE_ALIASES = {
+  GEM: ['GEM', 'GeM'],
+  CPPP: ['CPPP', 'eProcurement', 'ePublish'],
+};
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 class LiveTenderController {
   async getLiveTenders(req, res) {
     try {
@@ -12,6 +21,7 @@ class LiveTenderController {
         location,
         state,
         department,
+        sourcePortal,
         sortBy = 'createdAt',
         sortOrder = 'desc',
       } = req.query;
@@ -19,49 +29,54 @@ class LiveTenderController {
       const skip = (parseInt(page) - 1) * parseInt(limit);
       const query = { isActive: true, status: { $in: ['published', 'open'] } };
 
+      const andConditions = [
+        // Active-only: submission deadline not passed. Tenders without a
+        // deadline are kept visible to avoid hiding unparseable data.
+        {
+          $or: [
+            { submissionDeadline: { $gte: new Date() } },
+            { submissionDeadline: { $exists: false } },
+          ],
+        },
+      ];
+
       if (search) {
-        query.$or = [
-          { title: { $regex: search, $options: 'i' } },
-          { tenderNumber: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } },
-        ];
+        const searchTerm = escapeRegex(search);
+        andConditions.push({
+          $or: [
+            { title: { $regex: searchTerm, $options: 'i' } },
+            { tenderNumber: { $regex: searchTerm, $options: 'i' } },
+            { description: { $regex: searchTerm, $options: 'i' } },
+            { issuingOrganization: { $regex: searchTerm, $options: 'i' } },
+            { 'metadata.state': { $regex: searchTerm, $options: 'i' } },
+          ],
+        });
       }
 
       if (category) query.category = category;
-      if (location) query.location = { $regex: location, $options: 'i' };
-      if (state) query['metadata.state'] = { $regex: state, $options: 'i' };
-      if (department) query.department = { $regex: department, $options: 'i' };
+      if (location) query.location = { $regex: escapeRegex(location), $options: 'i' };
+      if (state) query['metadata.state'] = { $regex: escapeRegex(state), $options: 'i' };
+      if (department) query.department = { $regex: escapeRegex(department), $options: 'i' };
+      if (sourcePortal) {
+        const aliases = SOURCE_ALIASES[String(sourcePortal).toUpperCase()];
+        query.sourcePortal = aliases ? { $in: aliases } : sourcePortal;
+      }
+
+      if (andConditions.length > 1) {
+        query.$and = andConditions;
+      }
 
       const sortField = sortBy === 'submissionDeadline' ? 'submissionDeadline' : 'createdAt';
       const sortValue = sortOrder === 'asc' ? 1 : -1;
 
-      console.log("Query:", query);
-
-let tenders = [];
-let total = 0;
-
-try {
-  tenders = await LiveTender.find(query)
-    .sort({ [sortField]: sortValue })
-    .skip(skip)
-    .limit(parseInt(limit))
-    .lean();
-
-  console.log("Fetched tenders:", tenders.length);
-} catch (err) {
-  console.error("LiveTender.find() failed");
-  console.error(err);
-  throw err;
-}
-
-try {
-  total = await LiveTender.countDocuments(query);
-  console.log("Total:", total);
-} catch (err) {
-  console.error("countDocuments() failed");
-  console.error(err);
-  throw err;
-}
+      const [tenders, total] = await Promise.all([
+        LiveTender.find(query)
+          .sort({ [sortField]: sortValue })
+          .skip(skip)
+          .limit(parseInt(limit))
+          .lean(),
+        LiveTender.countDocuments(query),
+      ]);
 
       res.status(200).json({
         success: true,
@@ -87,12 +102,13 @@ try {
 
   async getTenderById(req, res) {
     try {
-      const { cpppId } = req.params;
+      const { tenderId } = req.params;
       
       const tender = await LiveTender.findOne({
         $or: [
-          { 'metadata.cpppId': cpppId },
-          { tenderNumber: cpppId },
+          { 'metadata.gemBidId': tenderId },
+          { 'metadata.cpppId': tenderId },
+          { tenderNumber: tenderId },
         ],
       }).lean();
 
