@@ -1,4 +1,4 @@
-const { verifyToken } = require('../utils/jwt');
+const { verifyToken } = require('../config/jwt');
 const { Session } = require('../modules/auth/model');
 const logger = require('../config/logger');
 

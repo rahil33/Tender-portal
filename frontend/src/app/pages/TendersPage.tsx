@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { liveTenderService, LiveTender, LiveTenderFilters, TenderSourcePortal } from '../../services/liveTenderService';
+import { liveTenderService, LiveTender, LiveTenderFilters } from '../../services/liveTenderService';
 import { LoadingSpinner, Skeleton } from '../../components/Loading';
 import { useNotification } from '../../contexts/NotificationContext';
 import { Search, Filter, Calendar, Building2, MapPin, Download, RefreshCw, ExternalLink } from 'lucide-react';
@@ -17,7 +17,6 @@ export default function TendersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedState, setSelectedState] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedSource, setSelectedSource] = useState<'ALL' | TenderSourcePortal>('ALL');
   const [states, setStates] = useState<string[]>([]);
   const { error: showError, success } = useNotification();
 
@@ -52,7 +51,6 @@ export default function TendersPage() {
       search: searchTerm || undefined,
       state: selectedState || undefined,
       category: selectedCategory || undefined,
-      sourcePortal: selectedSource === 'ALL' ? undefined : selectedSource,
     });
 
     console.log("Live Tender Response:", response);
@@ -83,7 +81,7 @@ export default function TendersPage() {
   useEffect(() => {
     fetchStates();
     fetchTenders();
-  }, [page, selectedCategory, selectedState, selectedSource]);
+  }, [page, selectedCategory, selectedState]);
 
   const handleSearch = () => {
     setPage(1);
@@ -115,10 +113,10 @@ export default function TendersPage() {
 
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-4xl font-bold mb-2" style={{ color: '#111827' }}>Live Tenders</h1>
+            <h1 className="text-4xl font-bold mb-2" style={{ color: '#111827' }}>Live GeM Tenders</h1>
             <p className="text-sm text-gray-500 flex items-center gap-2">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Live from GeM (Government e-Marketplace) & CPPP (Central Public Procurement Portal)
+              Source: Government e-Marketplace (GeM)
             </p>
           </div>
           <button
@@ -130,7 +128,7 @@ export default function TendersPage() {
         </div>
 
         <p className="mb-8 text-gray-600">
-          Browse live tender opportunities from GeM (Government e-Marketplace) and CPPP (Central Public Procurement Portal)
+          Browse live tender opportunities from GeM (Government e-Marketplace)
         </p>
         
         {/* Search and Filter Section */}
@@ -142,7 +140,7 @@ export default function TendersPage() {
             boxShadow: '0 8px 32px rgba(0,0,0,0.04)' 
           }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="relative">
               <input 
                 type="text" 
@@ -154,15 +152,6 @@ export default function TendersPage() {
               />
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
-            <select 
-              value={selectedSource}
-              onChange={(e) => setSelectedSource(e.target.value as 'ALL' | TenderSourcePortal)}
-              className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
-            >
-              <option value="ALL">All Sources</option>
-              <option value="GEM">GeM</option>
-              <option value="CPPP">CPPP</option>
-            </select>
             <select 
               value={selectedState}
               onChange={(e) => setSelectedState(e.target.value)}
@@ -217,7 +206,6 @@ export default function TendersPage() {
                   setSearchTerm('');
                   setSelectedCategory('');
                   setSelectedState('');
-                  setSelectedSource('ALL');
                   setFilters({ page: 1, limit: 10 });
                   setPage(1);
                   fetchTenders();
@@ -255,15 +243,9 @@ export default function TendersPage() {
                         <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded font-semibold">
                           Live
                         </span>
-                        {tender.sourcePortal && (
-                          <span className={`text-xs px-2 py-1 rounded font-bold ${
-                            tender.sourcePortal === 'GEM'
-                              ? 'text-blue-700 bg-blue-50'
-                              : 'text-purple-700 bg-purple-50'
-                          }`}>
-                            {tender.sourcePortal === 'GEM' ? 'GeM' : 'CPPP'}
-                          </span>
-                        )}
+                        <span className="text-xs px-2 py-1 rounded font-bold text-blue-700 bg-blue-50">
+                          GeM
+                        </span>
                       </div>
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{tender.title}</h3>
                     </div>
@@ -298,7 +280,7 @@ export default function TendersPage() {
                       onClick={(e) => e.stopPropagation()}
                       className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-semibold"
                     >
-                      {tender.sourcePortal === 'CPPP' ? 'View on CPPP' : 'View on GeM'} <ExternalLink size={14} />
+                      View on GeM <ExternalLink size={14} />
                     </a>
                     {tender.documents && tender.documents.length > 0 && (
                       <button

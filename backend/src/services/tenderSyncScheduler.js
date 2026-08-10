@@ -35,11 +35,11 @@ class TenderSyncScheduler {
       return;
     }
 
-    logger.info('Tender sync scheduler initializing...');
+    logger.info('GeM tender sync scheduler initializing...');
 
     const runSync = async (source = 'scheduled') => {
       if (this.isRunning) {
-        logger.warn('Previous sync still running, skipping', { source });
+        logger.warn('Previous GeM sync still running, skipping', { source });
         return;
       }
 
@@ -47,19 +47,19 @@ class TenderSyncScheduler {
         await this.waitForMongoDB();
         
         this.isRunning = true;
-        logger.info(`Starting ${source} tender sync...`);
+        logger.info(`Starting GeM tender synchronization (${source})...`);
         
         const result = await liveTenderSyncService.synchronizeTenders();
         
         if (result.success) {
-          logger.info(`${source} sync completed successfully`, {
+          logger.info(`GeM tender synchronization completed (${source})`, {
             synced: result.stats?.totalSynced,
             updated: result.stats?.totalUpdated,
             failed: result.stats?.totalFailed,
             duration: result.stats?.syncDuration,
           });
         } else {
-          logger.error(`${source} sync failed`, { 
+          logger.error(`GeM synchronization (${source}) failed`, { 
             error: result.message,
             servingCached: true,
           });
@@ -69,7 +69,7 @@ class TenderSyncScheduler {
           this.initialSyncDone = true;
         }
       } catch (error) {
-        logger.error(`${source} sync error`, { 
+        logger.error(`GeM synchronization (${source}) error`, { 
           error: error.message,
           servingCached: true,
         });
@@ -86,12 +86,12 @@ class TenderSyncScheduler {
       timezone: 'Asia/Kolkata',
     });
 
-    logger.info('Tender sync scheduler started - runs every 60 minutes');
+    logger.info('GeM tender sync scheduler started - runs every 60 minutes');
 
     // Run initial sync after 5 seconds
     setTimeout(() => {
       runSync('initial').catch(err => {
-        logger.error('Initial sync failed to start', { error: err.message });
+        logger.error('Initial GeM sync failed to start', { error: err.message });
       });
     }, 5000);
   }
@@ -100,7 +100,7 @@ class TenderSyncScheduler {
     if (this.syncJob) {
       this.syncJob.stop();
       this.syncJob = null;
-      logger.info('Tender sync scheduler stopped');
+      logger.info('GeM tender sync scheduler stopped');
     }
   }
 

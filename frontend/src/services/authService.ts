@@ -42,11 +42,6 @@ export const authService = {
 
   async login(data: LoginData) {
     const response = await api.post<AuthApiResponse>('/auth/login', data);
-    console.log('=== authService.login() ===');
-    console.log('Full axios response:', JSON.stringify(response, null, 2));
-    console.log('response.data:', JSON.stringify(response.data, null, 2));
-    console.log('response.data.data:', response.data?.data);
-    console.log('response.data.user:', response.data?.user);
     return response.data;
   },
 

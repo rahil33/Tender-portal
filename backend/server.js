@@ -38,6 +38,15 @@ let server;
 // Connect MongoDB
 connectDB();
 
+// Seed the production admin account (idempotent) once the DB is connected.
+const mongoose = require('mongoose');
+const { seedAdmin } = require('./src/scripts/seedAdmin');
+mongoose.connection.once('connected', () => {
+  seedAdmin().catch((err) => {
+    logger.error('Admin seed failed', { error: err.message });
+  });
+});
+
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────
 // Security Headers with Enhanced Configuration
 app.use(helmet({

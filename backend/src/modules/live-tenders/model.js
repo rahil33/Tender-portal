@@ -89,17 +89,13 @@ const tenderSchema = new mongoose.Schema(
       source: {
         type: String,
         required: true,
-        default: 'CPPP',
+        default: 'GEM',
       },
       originalUrl: {
         type: String,
         required: true,
       },
       gemBidId: {
-        type: String,
-        index: true,
-      },
-      cpppId: {
         type: String,
         index: true,
       },
@@ -121,7 +117,6 @@ const tenderSchema = new mongoose.Schema(
       boqUrl: String,
       corrigendumUrl: String,
       tenderPdfUrl: String,
-      contractType: String,
       productCategory: String,
       bidType: Number,
       isHighValue: Boolean,
@@ -151,8 +146,8 @@ const tenderSchema = new mongoose.Schema(
     sourcePortal: {
       type: String,
       required: true,
-      default: 'CPPP',
-      enum: ['CPPP', 'eProcurement', 'ePublish', 'GeM', 'GEM'],
+      default: 'GEM',
+      enum: ['GEM'],
     },
     lastSyncedAt: {
       type: Date,

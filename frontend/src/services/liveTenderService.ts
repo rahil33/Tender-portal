@@ -1,7 +1,5 @@
 import api from './api';
 
-export type TenderSourcePortal = 'GEM' | 'CPPP';
-
 export interface LiveTender {
   _id?: string;
   tenderNumber: string;
@@ -22,17 +20,15 @@ export interface LiveTender {
   department: string;
   tenderType: 'government';
   tags: string[];
-  sourcePortal?: TenderSourcePortal;
+  sourcePortal: 'GEM';
   metadata: {
-    source: 'GEM' | 'CPPP';
+    source: 'GEM';
     originalUrl: string;
     gemBidId?: string;
-    cpppId?: string;
     ministry?: string;
     state?: string;
     city?: string;
     corrigendumCount?: number;
-    contractType?: string;
     productCategory?: string;
   };
   documents: Array<{
@@ -59,7 +55,6 @@ export interface LiveTenderFilters {
   location?: string;
   state?: string;
   status?: string;
-  sourcePortal?: TenderSourcePortal;
   isArchived?: boolean;
 }
 
@@ -87,7 +82,6 @@ export const liveTenderService = {
     if (filters.location) params.append('location', filters.location);
     if (filters.state) params.append('state', filters.state);
     if (filters.status) params.append('status', filters.status);
-    if (filters.sourcePortal) params.append('sourcePortal', filters.sourcePortal);
 
 if (filters.isArchived !== undefined)
   params.append('isArchived', String(filters.isArchived));

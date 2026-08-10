@@ -23,27 +23,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  console.log('[AuthContext] Render:', { user, token, isAuthenticated: !!user && !!token, isLoading });
-
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   const refreshUser = useCallback(() => {
-    console.log('=== refreshUser() called ===');
     const storedToken = localStorage.getItem('authToken');
     const storedUser = localStorage.getItem('user');
-    
-    console.log('storedToken:', storedToken);
-    console.log('storedUser:', storedUser);
     
     if (storedToken && storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
-        console.log('parsedUser:', parsedUser);
         setUser(parsedUser);
         setToken(storedToken);
-        console.log('User restored from localStorage');
       } catch (e) {
         console.error('Failed to parse stored user:', e);
         localStorage.removeItem('authToken');
@@ -51,8 +43,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setToken(null);
         setUser(null);
       }
-    } else {
-      console.log('No stored auth data found');
     }
     setIsLoading(false);
   }, []);
@@ -66,28 +56,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const response = await authService.login(data);
-      console.log('=== AuthContext.login() ===');
-      console.log('Response received:', response);
-      console.log('response.data:', response.data);
-      console.log('response.data?.data:', response.data?.data);
-      console.log('response.data?.data?.user:', response.data?.data?.user);
-      console.log('response.data?.data?.token:', response.data?.data?.token);
-      
-      const userData = response.data?.user;
-      const tokenData = response.data?.token;
-      
-      console.log('Setting user:', userData);
-      console.log('Setting token:', tokenData);
-      
+
+      const userData = response.data?.data?.user;
+      const tokenData = response.data?.data?.token;
+
+      if (!userData || !tokenData) {
+        throw new Error('Invalid authentication response');
+      }
+
       setUser(userData);
       setToken(tokenData);
       localStorage.setItem('authToken', tokenData);
       localStorage.setItem('user', JSON.stringify(userData));
-      
-      console.log('=== localStorage after set ===');
-      console.log('Stored user:', localStorage.getItem('user'));
-      console.log('Stored token:', localStorage.getItem('authToken'));
-      console.log('State updated');
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || 'Login failed';
       setError(errorMessage);
@@ -102,11 +82,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const response = await authService.register(data);
-      const userData = response.data?.user;
-      const tokenData = response.data?.token;
+      const userData = response.data?.data?.user;
+      const tokenData = response.data?.data?.token;
       if (!userData || !tokenData) {
-    throw new Error("Invalid authentication response");
-}
+        throw new Error("Invalid authentication response");
+      }
 
       setUser(userData);
       setToken(tokenData);

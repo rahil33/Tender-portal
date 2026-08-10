@@ -3,7 +3,6 @@
  */
 
 const SOURCE_PORTALS = {
-  CPPP: 'CPPP',
   GEM: 'GEM',
 };
 

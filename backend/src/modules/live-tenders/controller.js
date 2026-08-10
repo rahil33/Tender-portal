@@ -1,10 +1,6 @@
 const liveTenderSyncService = require('./service');
 const { LiveTender } = require('./model');
-
-const SOURCE_ALIASES = {
-  GEM: ['GEM', 'GeM'],
-  CPPP: ['CPPP', 'eProcurement', 'ePublish'],
-};
+const { SOURCE_PORTALS } = require('./constants');
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -21,13 +17,16 @@ class LiveTenderController {
         location,
         state,
         department,
-        sourcePortal,
         sortBy = 'createdAt',
         sortOrder = 'desc',
       } = req.query;
 
       const skip = (parseInt(page) - 1) * parseInt(limit);
-      const query = { isActive: true, status: { $in: ['published', 'open'] } };
+      const query = {
+        isActive: true,
+        status: { $in: ['published', 'open'] },
+        sourcePortal: SOURCE_PORTALS.GEM,
+      };
 
       const andConditions = [
         // Active-only: submission deadline not passed. Tenders without a
@@ -57,10 +56,6 @@ class LiveTenderController {
       if (location) query.location = { $regex: escapeRegex(location), $options: 'i' };
       if (state) query['metadata.state'] = { $regex: escapeRegex(state), $options: 'i' };
       if (department) query.department = { $regex: escapeRegex(department), $options: 'i' };
-      if (sourcePortal) {
-        const aliases = SOURCE_ALIASES[String(sourcePortal).toUpperCase()];
-        query.sourcePortal = aliases ? { $in: aliases } : sourcePortal;
-      }
 
       if (andConditions.length > 1) {
         query.$and = andConditions;
@@ -103,11 +98,11 @@ class LiveTenderController {
   async getTenderById(req, res) {
     try {
       const { tenderId } = req.params;
-      
+
       const tender = await LiveTender.findOne({
+        sourcePortal: SOURCE_PORTALS.GEM,
         $or: [
           { 'metadata.gemBidId': tenderId },
-          { 'metadata.cpppId': tenderId },
           { tenderNumber: tenderId },
         ],
       }).lean();
@@ -135,7 +130,7 @@ class LiveTenderController {
 
   async getStates(req, res) {
     try {
-      const states = await LiveTender.distinct('metadata.state', { isActive: true });
+      const states = await LiveTender.distinct('metadata.state', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
       
       res.status(200).json({
         success: true,
@@ -152,7 +147,7 @@ class LiveTenderController {
 
   async getDepartments(req, res) {
     try {
-      const departments = await LiveTender.distinct('department', { isActive: true });
+      const departments = await LiveTender.distinct('department', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
       
       res.status(200).json({
         success: true,
@@ -169,7 +164,7 @@ class LiveTenderController {
 
   async getCategories(req, res) {
     try {
-      const categories = await LiveTender.distinct('category', { isActive: true });
+      const categories = await LiveTender.distinct('category', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
       
       res.status(200).json({
         success: true,

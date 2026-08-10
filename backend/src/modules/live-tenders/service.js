@@ -1,6 +1,5 @@
 const { LiveTender } = require('./model');
 const { SOURCE_PORTALS } = require('./constants');
-const cpppScraperService = require('./services/cpppScraper.service');
 const gemScraperService = require('./services/gemScraper.service');
 const logger = require('../../config/logger');
 const mongoose = require('mongoose');
@@ -47,13 +46,12 @@ class LiveTenderSyncService {
   /**
    * Aligns the LiveTender collection indexes with the current schema.
    *
-   * A previous schema version defined metadata.cpppId as `unique: true`,
-   * leaving a legacy UNIQUE index in existing databases. Because GEM tenders
-   * store no cpppId (null), that unique index allows only ONE GEM record to be
-   * inserted and makes every subsequent GEM insert fail with an E11000
-   * duplicate-key error. This drops the legacy unique index so both GEM and
-   * CPPP tenders can be synchronized; Mongoose recreates the plain (non-unique)
-   * index defined by the current schema.
+   * A previous schema version defined a legacy unique index (metadata.cpppId_1)
+   * in existing databases. Because GeM tenders do not store a cpppId (null),
+   * that unique index allows only one GeM record to be inserted and makes every
+   * subsequent GeM insert fail with an E11000 duplicate-key error. This drops
+   * the legacy unique index so GeM tenders can be synchronized; Mongoose
+   * recreates only the indexes defined by the current schema.
    */
   async alignIndexes() {
     try {
@@ -62,9 +60,9 @@ class LiveTenderSyncService {
       }
       const collection = LiveTender.collection;
       const indexes = await collection.indexes();
-      const legacyCppp = indexes.find((idx) => idx.name === 'metadata.cpppId_1' && idx.unique);
-      if (legacyCppp) {
-        logger.warn('Dropping legacy unique index metadata.cpppId_1 (blocks GEM sync)');
+      const legacy = indexes.find((idx) => idx.name === 'metadata.cpppId_1' && idx.unique);
+      if (legacy) {
+        logger.warn('Dropping legacy unique index metadata.cpppId_1 (blocks GeM sync)');
         await collection.dropIndex('metadata.cpppId_1');
         await LiveTender.init();
         logger.info('Legacy unique index metadata.cpppId_1 dropped; schema indexes aligned');
@@ -87,27 +85,13 @@ class LiveTenderSyncService {
     try {
       await this.waitForConnection();
       
-      logger.info('Starting tender synchronization...');
-      
-      const sourceResults = await Promise.allSettled([
-        cpppScraperService.fetchActiveTenders(),
-        gemScraperService.fetchActiveTenders(),
-      ]);
+      logger.info('Starting GeM tender synchronization...');
 
-      const sourceLabels = ['CPPP', 'GEM'];
-      const tenders = [];
-      sourceResults.forEach((result, index) => {
-        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-          tenders.push(...result.value);
-        } else {
-          const reason = result.status === 'rejected' ? result.reason : new Error('Invalid result from source');
-          logger.error(`Source ${sourceLabels[index]} fetch failed`, { error: reason.message });
-          this.syncStats.lastError = `Source ${sourceLabels[index]} fetch failed: ${reason.message}`;
-        }
-      });
+      const sourceResult = await gemScraperService.fetchActiveTenders();
+      const tenders = Array.isArray(sourceResult) ? sourceResult : [];
 
-      if (!tenders || tenders.length === 0) {
-        logger.warn('No tenders fetched from sources, keeping existing data');
+      if (tenders.length === 0) {
+        logger.warn('No GeM tenders fetched, keeping existing data');
         this.syncStats = {
           ...this.syncStats,
           lastSyncAt: new Date(),
@@ -118,12 +102,12 @@ class LiveTenderSyncService {
         };
         return {
           success: true,
-          message: 'No new tenders available, serving existing cached data',
+          message: 'No new GeM tenders available, serving existing cached data',
           stats: this.syncStats,
         };
       }
       
-      logger.info(`Processing ${tenders.length} tenders...`);
+      logger.info(`Processing ${tenders.length} GeM tenders...`);
       
       let inserted = 0;
       let updated = 0;
@@ -138,20 +122,19 @@ class LiveTenderSyncService {
           else skipped++;
         } catch (error) {
           failed++;
-          const detail = {
-            tenderNumber: tenderData.tenderNumber,
-            sourcePortal: tenderData.sourcePortal,
-            error: error.message,
-            code: error.code,
-            keyPattern: error.keyPattern,
-            keyValue: error.keyValue,
-            validation: error.errors
-              ? Object.entries(error.errors).map(([field, e]) => ({ field, message: e.message }))
-              : undefined,
-          };
           logger.error(
-            `Failed to sync tender ${tenderData.tenderNumber || '(unknown)'} [${tenderData.sourcePortal || 'unknown'}]`,
-            detail
+            `Failed to sync GeM tender ${tenderData.tenderNumber || '(unknown)'}`,
+            {
+              gemBidId: tenderData.metadata?.gemBidId,
+              source: tenderData.sourcePortal || SOURCE_PORTALS.GEM,
+              error: error.message,
+              code: error.code,
+              keyPattern: error.keyPattern,
+              keyValue: error.keyValue,
+              validation: error.errors
+                ? Object.entries(error.errors).map(([field, e]) => ({ field, message: e.message }))
+                : undefined,
+            }
           );
         }
       }
@@ -172,7 +155,7 @@ class LiveTenderSyncService {
         isSyncing: false,
       };
 
-      logger.info('Tender synchronization completed', {
+      logger.info('GeM tender synchronization completed', {
         inserted,
         updated,
         skipped,
@@ -208,13 +191,12 @@ class LiveTenderSyncService {
   }
 
   async upsertTender(tenderData) {
-    const sourcePortal = tenderData.sourcePortal || SOURCE_PORTALS.CPPP;
+    const sourcePortal = tenderData.sourcePortal || SOURCE_PORTALS.GEM;
 
     const existingTender = await LiveTender.findOne({
       $or: [
         { tenderNumber: tenderData.tenderNumber },
         ...(tenderData.metadata?.gemBidId ? [{ 'metadata.gemBidId': tenderData.metadata.gemBidId }] : []),
-        ...(tenderData.metadata?.cpppId ? [{ 'metadata.cpppId': tenderData.metadata.cpppId }] : []),
       ],
     });
 
@@ -237,11 +219,9 @@ class LiveTenderSyncService {
           source: tenderData.metadata?.source || sourcePortal,
           originalUrl: tenderData.originalUrl,
           gemBidId: tenderData.metadata?.gemBidId || existingTender.metadata.gemBidId,
-          cpppId: tenderData.metadata?.cpppId || existingTender.metadata.cpppId,
           ministry: tenderData.metadata?.ministry || existingTender.metadata.ministry,
           tenderPdfUrl: tenderData.metadata?.tenderPdfUrl || existingTender.metadata.tenderPdfUrl,
           corrigendumCount: tenderData.metadata?.corrigendumCount || existingTender.metadata.corrigendumCount,
-          contractType: tenderData.metadata?.contractType || existingTender.metadata.contractType,
           productCategory: tenderData.metadata?.productCategory || existingTender.metadata.productCategory,
           bidType: tenderData.metadata?.bidType || existingTender.metadata.bidType,
           isHighValue: tenderData.metadata?.isHighValue || existingTender.metadata.isHighValue,
@@ -274,7 +254,6 @@ class LiveTenderSyncService {
           source: tenderData.metadata?.source || sourcePortal,
           originalUrl: tenderData.originalUrl,
           gemBidId: tenderData.metadata?.gemBidId,
-          cpppId: tenderData.metadata?.cpppId,
           state: tenderData.metadata?.state,
           ministry: tenderData.metadata?.ministry,
           city: tenderData.metadata?.city,
@@ -282,7 +261,6 @@ class LiveTenderSyncService {
           boqUrl: tenderData.metadata?.boqUrl,
           corrigendumUrl: tenderData.metadata?.corrigendumUrl,
           tenderPdfUrl: tenderData.metadata?.tenderPdfUrl,
-          contractType: tenderData.metadata?.contractType,
           productCategory: tenderData.metadata?.productCategory,
           bidType: tenderData.metadata?.bidType,
           isHighValue: tenderData.metadata?.isHighValue,
@@ -351,26 +329,27 @@ class LiveTenderSyncService {
   }
 
   async getStatistics() {
-    const total = await LiveTender.countDocuments({});
-    const active = await LiveTender.countDocuments({ isActive: true, status: { $in: ['published', 'open'] } });
-    const closed = await LiveTender.countDocuments({ status: 'closed' });
-    const cancelled = await LiveTender.countDocuments({ status: 'cancelled' });
-    
+    const gemFilter = { sourcePortal: SOURCE_PORTALS.GEM };
+    const total = await LiveTender.countDocuments(gemFilter);
+    const active = await LiveTender.countDocuments({ ...gemFilter, isActive: true, status: { $in: ['published', 'open'] } });
+    const closed = await LiveTender.countDocuments({ ...gemFilter, status: 'closed' });
+    const cancelled = await LiveTender.countDocuments({ ...gemFilter, status: 'cancelled' });
+
     const byCategory = await LiveTender.aggregate([
-      { $match: { isActive: true } },
+      { $match: { ...gemFilter, isActive: true } },
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
     ]);
 
     const byState = await LiveTender.aggregate([
-      { $match: { isActive: true } },
+      { $match: { ...gemFilter, isActive: true } },
       { $group: { _id: '$metadata.state', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 20 },
     ]);
 
     const byDepartment = await LiveTender.aggregate([
-      { $match: { isActive: true } },
+      { $match: { ...gemFilter, isActive: true } },
       { $group: { _id: '$department', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
       { $limit: 20 },
@@ -400,6 +379,41 @@ class LiveTenderSyncService {
   async clearCache() {
     await LiveTender.deleteMany({ isActive: false });
     return { success: true, message: 'Cache cleared successfully' };
+  }
+
+  /**
+   * Migration/cleanup: identifies and (optionally) removes legacy tender
+   * records that are not from GeM. Safe to run: by default it only counts
+   * matching records. Pass `apply: true` to actually delete them.
+   *
+   * Legacy records match when:
+   *  - sourcePortal is not "GEM", OR
+   *  - metadata.cpppId exists (i.e. the tender was sourced from CPPP).
+   *
+   * GeM records (sourcePortal === "GEM") are never touched.
+   */
+  async cleanupNonGemTenders({ apply = false } = {}) {
+    await this.waitForConnection();
+
+    const legacyQuery = {
+      $or: [
+        { sourcePortal: { $ne: SOURCE_PORTALS.GEM } },
+        { sourcePortal: { $exists: false } },
+        { 'metadata.cpppId': { $exists: true } },
+      ],
+    };
+
+    const legacyCount = await LiveTender.countDocuments(legacyQuery);
+    const gemCount = await LiveTender.countDocuments({ sourcePortal: SOURCE_PORTALS.GEM });
+
+    if (!apply) {
+      logger.info(`Cleanup dry-run: ${legacyCount} legacy non-GeM tender record(s) found; ${gemCount} GeM record(s) kept.`);
+      return { success: true, dryRun: true, legacyCount, gemCount };
+    }
+
+    const { deletedCount } = await LiveTender.deleteMany(legacyQuery);
+    logger.info(`Cleanup applied: removed ${deletedCount} legacy non-GeM tender record(s); kept ${gemCount} GeM record(s)`);
+    return { success: true, dryRun: false, deletedCount, gemCount };
   }
 }
 

@@ -192,15 +192,9 @@ export const TenderList: React.FC = () => {
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-[#F3F4F6] border border-[#E5E7EB] text-[#6B7280]">
                           {tender.tenderNumber}
                         </span>
-                        {tender.sourcePortal && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                            tender.sourcePortal === 'GEM'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : 'bg-purple-50 text-purple-700 border border-purple-200'
-                          }`}>
-                            {tender.sourcePortal === 'GEM' ? 'GeM' : 'CPPP'}
-                          </span>
-                        )}
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                          GeM
+                        </span>
                         <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[#6B7280]">
                           <Tag size={12} /> {tender.category}
                         </span>
@@ -270,15 +264,9 @@ export const TenderList: React.FC = () => {
                   {tender.tenderNumber}
                 </span>
                 <span className="flex items-center gap-2">
-                  {tender.sourcePortal && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                      tender.sourcePortal === 'GEM'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                        : 'bg-purple-50 text-purple-700 border border-purple-200'
-                    }`}>
-                      {tender.sourcePortal === 'GEM' ? 'GeM' : 'CPPP'}
-                    </span>
-                  )}
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                    GeM
+                  </span>
                   <span className="text-xs font-bold flex items-center gap-1 text-[#EF4444]">
                     <Clock size={14} />
                     {tender.submissionDeadline
