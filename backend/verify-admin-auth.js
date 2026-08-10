@@ -1,4 +1,12 @@
+require('dotenv').config();
 const BASE = 'http://localhost:5050/api';
+
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@phoenixtech.in';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  console.error('ADMIN_PASSWORD is not set in the environment.');
+  process.exit(1);
+}
 
 async function call(method, path, body, token) {
   const headers = { 'Content-Type': 'application/json' };
@@ -14,8 +22,8 @@ async function main() {
 
   // 1. Admin valid login
   const adminLogin = await call('POST', '/auth/login', {
-    email: 'admin@phoenixtech.in',
-    password: 'Phoenix@Admin#2026!Secure',
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
   });
   const adminToken = adminLogin.json?.data?.token;
   results.push(['1. Admin login valid creds -> 200', adminLogin.status === 200]);
@@ -34,7 +42,7 @@ async function main() {
   // 3. Invalid email
   const wrongEmail = await call('POST', '/auth/login', {
     email: 'nobody@phoenixtech.in',
-    password: 'Phoenix@Admin#2026!Secure',
+    password: ADMIN_PASSWORD,
   });
   results.push(['3. Invalid email -> 401', wrongEmail.status === 401]);
   console.log('  [wrong email]', wrongEmail.status);

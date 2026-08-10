@@ -8,7 +8,7 @@ const { Session } = require('./src/modules/auth/model');
   const res = await fetch('http://localhost:5050/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@phoenixtech.in', password: 'Phoenix@Admin#2026!Secure' }),
+    body: JSON.stringify({ email: process.env.ADMIN_EMAIL || 'admin@phoenixtech.in', password: process.env.ADMIN_PASSWORD }),
   });
   const j = await res.json();
   const token = j.data?.token;

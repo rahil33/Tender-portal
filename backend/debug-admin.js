@@ -1,4 +1,11 @@
+require('dotenv').config();
 const BASE = 'http://localhost:5050/api';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@phoenixtech.in';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+if (!ADMIN_PASSWORD) {
+  console.error('ADMIN_PASSWORD is not set in the environment.');
+  process.exit(1);
+}
 async function call(method, path, body, token) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -8,7 +15,7 @@ async function call(method, path, body, token) {
   return { status: res.status, json };
 }
 async function main() {
-  const login = await call('POST', '/auth/login', { email: 'admin@phoenixtech.in', password: 'Phoenix@Admin#2026!Secure' });
+  const login = await call('POST', '/auth/login', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
   const adminToken = login.json?.data?.token;
   console.log('login', login.status);
   for (const p of ['/admin/dashboard/stats', '/admin/health', '/admin/statistics', '/admin/users?page=1&limit=2', '/admin/analytics', '/admin/settings']) {
