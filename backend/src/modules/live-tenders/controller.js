@@ -1,27 +1,80 @@
 const liveTenderSyncService = require('./service');
 const { LiveTender } = require('./model');
-const { SOURCE_PORTALS } = require('./constants');
+const { SOURCE_PORTALS, DEFAULT_PAGE, DEFAULT_LIMIT, MAX_LIMIT } = require('./constants');
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Safely parses a positive integer query value.
+ * - Malformed/NaN input falls back to `fallback` (never crashes the query).
+ * - Values are clamped to `max` when provided (no unbounded limit/page).
+ */
+function toPositiveInt(value, fallback, max) {
+  const parsed = parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return max ? Math.min(parsed, max) : parsed;
+}
+
+/**
+ * Normalizes a free-text search parameter: trims and caps its length so a
+ * huge malicious string cannot be turned into an expensive regex.
+ */
+function cleanText(value, maxLength) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+const SEARCHABLE_FIELDS = [
+  'title',
+  'tenderNumber',
+  'description',
+  'issuingOrganization',
+  'department',
+  'location',
+  'contactInfo.organisation',
+  'metadata.state',
+  'metadata.city',
+  'metadata.ministry',
+  'metadata.gemBidId',
+  'metadata.productCategory',
+  'tags',
+];
+
 class LiveTenderController {
   async getLiveTenders(req, res) {
     try {
       const {
-        page = 1,
-        limit = 10,
+        page,
+        limit,
         search,
+        q,
         category,
         location,
         state,
         department,
+        organization,
         sortBy = 'createdAt',
         sortOrder = 'desc',
       } = req.query;
 
-      const skip = (parseInt(page) - 1) * parseInt(limit);
+      // Safe pagination: malformed input falls back, limits are capped.
+      const safePage = toPositiveInt(page, DEFAULT_PAGE);
+      const safeLimit = toPositiveInt(limit, DEFAULT_LIMIT, MAX_LIMIT);
+      const skip = (safePage - 1) * safeLimit;
+
+      // `search` and `q` are interchangeable; the main search box uses `search`
+      // while `q` is supported as a short alias.
+      const searchTerm = cleanText(search || q, 200);
+      const categoryValue = cleanText(category, 100).toLowerCase();
+      const locationValue = cleanText(location, 100);
+      const stateValue = cleanText(state, 100);
+      const departmentValue = cleanText(department || organization, 100);
+
+      // GeM-only, live-only base filter. The frontend has no way to request a
+      // different source portal.
       const query = {
         isActive: true,
         status: { $in: ['published', 'open'] },
@@ -39,27 +92,31 @@ class LiveTenderController {
         },
       ];
 
-      if (search) {
-        const searchTerm = escapeRegex(search);
+      if (searchTerm) {
+        const searchRegex = escapeRegex(searchTerm);
+        andConditions.push({
+          $or: SEARCHABLE_FIELDS.map((field) => ({
+            [field]: { $regex: searchRegex, $options: 'i' },
+          })),
+        });
+      }
+
+      if (categoryValue) query.category = categoryValue;
+      if (locationValue) query.location = { $regex: escapeRegex(locationValue), $options: 'i' };
+      if (stateValue) query['metadata.state'] = { $regex: escapeRegex(stateValue), $options: 'i' };
+
+      if (departmentValue) {
+        const departmentRegex = escapeRegex(departmentValue);
         andConditions.push({
           $or: [
-            { title: { $regex: searchTerm, $options: 'i' } },
-            { tenderNumber: { $regex: searchTerm, $options: 'i' } },
-            { description: { $regex: searchTerm, $options: 'i' } },
-            { issuingOrganization: { $regex: searchTerm, $options: 'i' } },
-            { 'metadata.state': { $regex: searchTerm, $options: 'i' } },
+            { department: { $regex: departmentRegex, $options: 'i' } },
+            { issuingOrganization: { $regex: departmentRegex, $options: 'i' } },
+            { 'contactInfo.organisation': { $regex: departmentRegex, $options: 'i' } },
           ],
         });
       }
 
-      if (category) query.category = category;
-      if (location) query.location = { $regex: escapeRegex(location), $options: 'i' };
-      if (state) query['metadata.state'] = { $regex: escapeRegex(state), $options: 'i' };
-      if (department) query.department = { $regex: escapeRegex(department), $options: 'i' };
-
-      if (andConditions.length > 1) {
-        query.$and = andConditions;
-      }
+      query.$and = andConditions;
 
       const sortField = sortBy === 'submissionDeadline' ? 'submissionDeadline' : 'createdAt';
       const sortValue = sortOrder === 'asc' ? 1 : -1;
@@ -68,7 +125,7 @@ class LiveTenderController {
         LiveTender.find(query)
           .sort({ [sortField]: sortValue })
           .skip(skip)
-          .limit(parseInt(limit))
+          .limit(safeLimit)
           .lean(),
         LiveTender.countDocuments(query),
       ]);
@@ -79,10 +136,10 @@ class LiveTenderController {
         data: {
           data: tenders,
           pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
+            page: safePage,
+            limit: safeLimit,
             total,
-            pages: Math.ceil(total / parseInt(limit)),
+            pages: Math.ceil(total / safeLimit),
           },
         },
       });

@@ -1,4 +1,4 @@
-const {
+﻿const {
   AdminRole,
   AdminUser,
   AuditLog,
@@ -8,7 +8,7 @@ const {
   SystemHealthLog,
   PlatformStatistic,
 } = require('./model');
-const User = require('../users/users.model');
+const User = require('../../models/User');
 const {
   AdminRoleDTO,
   AdminUserDTO,
@@ -711,7 +711,7 @@ class AdminService {
 
   async getDashboardStats() {
     try {
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
       const totalUsers = await User.countDocuments({});
       const newUsersToday = await User.countDocuments({
         createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
@@ -1136,7 +1136,7 @@ class AdminService {
 
   async suspendUser(userId, reason, performedBy) {
     try {
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
       const user = await User.findById(userId);
 
       if (!user) {
@@ -1166,7 +1166,7 @@ class AdminService {
 
   async reactivateUser(userId, performedBy) {
     try {
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
       const user = await User.findById(userId);
 
       if (!user) {
@@ -1196,7 +1196,7 @@ class AdminService {
 
   async deleteUser(userId, performedBy) {
     try {
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
       const user = await User.findById(userId);
 
       if (!user) {
@@ -1226,7 +1226,7 @@ class AdminService {
 
   async resetUserPassword(userId, newPassword, performedBy) {
     try {
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
       const bcrypt = require('bcryptjs');
 
       const user = await User.findById(userId);
@@ -1655,7 +1655,7 @@ class AdminService {
       const { title, message, type = 'info', targetAudience = 'all' } = notificationData;
 
       const notifications = [];
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
 
       let query = {};
       if (targetAudience === 'buyers') {
@@ -1796,7 +1796,7 @@ class AdminService {
   async getSecurityMetrics() {
     try {
       const AuditLog = require('./model').AuditLog;
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
 
       const now = new Date();
       const last24Hours = new Date(now - 24 * 60 * 60 * 1000);
@@ -1850,7 +1850,7 @@ class AdminService {
 
   async getDetailedAnalytics(period = '30d') {
     try {
-      const User = require('../users/users.model');
+      const User = require('../../models/User');
       const Organization = require('../organizations/model').Organization;
       const Tender = require('../tenders/model').Tender;
       const Bid = require('../bids/model').Bid;

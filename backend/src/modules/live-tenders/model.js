@@ -167,6 +167,8 @@ tenderSchema.index({ category: 1, isActive: 1 });
 tenderSchema.index({ 'metadata.state': 1, isActive: 1 });
 tenderSchema.index({ department: 1, isActive: 1 });
 tenderSchema.index({ createdAt: -1 });
+// Every list/search query filters on the GeM portal + active status first.
+tenderSchema.index({ sourcePortal: 1, isActive: 1, status: 1, submissionDeadline: 1 });
 
 module.exports = {
   LiveTender: mongoose.model('LiveTender', tenderSchema),

@@ -74,34 +74,18 @@ export interface LiveTenderResponse {
 
 export const liveTenderService = {
   async getLiveTenders(filters: LiveTenderFilters = {}) {
-    const params = new URLSearchParams();
-    if (filters.page) params.append('page', filters.page.toString());
-    if (filters.limit) params.append('limit', filters.limit.toString());
-    if (filters.search) params.append('search', filters.search);
-    if (filters.category) params.append('category', filters.category);
-    if (filters.location) params.append('location', filters.location);
-    if (filters.state) params.append('state', filters.state);
-    if (filters.status) params.append('status', filters.status);
-
-if (filters.isArchived !== undefined)
-  params.append('isArchived', String(filters.isArchived));
-
     const response = await api.get<{
-  data: LiveTender[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
-}>('/live-tenders', {
-  params: filters,
-});
-    
-    // DEBUG: Log what the service returns
-    console.log('[liveTenderService] API response:', response);
-    console.log('[liveTenderService] Returning response.data:', response.data);
-    
+      data: LiveTender[];
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        pages: number;
+      };
+    }>('/live-tenders', {
+      params: filters,
+    });
+
     return response.data;
   },
 

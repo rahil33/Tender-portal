@@ -1,91 +1,120 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router';
-import { liveTenderService, LiveTender, LiveTenderFilters } from '../../services/liveTenderService';
-import { LoadingSpinner, Skeleton } from '../../components/Loading';
+import { useSearchParams } from 'react-router';
+import { liveTenderService, LiveTender } from '../../services/liveTenderService';
+import { Skeleton } from '../../components/Loading';
 import { useNotification } from '../../contexts/NotificationContext';
 import { Search, Filter, Calendar, Building2, MapPin, Download, RefreshCw, ExternalLink } from 'lucide-react';
 
+const PAGE_SIZE = 10;
+
+const CATEGORIES = [
+  'goods',
+  'services',
+  'works',
+  'construction',
+  'it_software',
+  'medical',
+  'transportation',
+  'agriculture',
+  'education',
+  'consultancy',
+  'other',
+];
+
 export default function TendersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // State is initialized from /tenders?search=..&state=..&category=..&page=..
+  // so searches can be refreshed and shared without breaking existing routing.
+  const initialSearch = searchParams.get('search') ?? '';
+  const initialState = searchParams.get('state') ?? '';
+  const initialCategory = searchParams.get('category') ?? '';
+  const initialPage = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+
   const [tenders, setTenders] = useState<LiveTender[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState<LiveTenderFilters>({
-    page: 1,
-    limit: 10,
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedState, setSelectedState] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(initialPage);
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const [submittedSearch, setSubmittedSearch] = useState(initialSearch);
+  const [selectedState, setSelectedState] = useState(initialState);
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [states, setStates] = useState<string[]>([]);
   const { error: showError, success } = useNotification();
 
-  const categories = [
-    'goods',
-    'services',
-    'works',
-    'construction',
-    'it_software',
-    'medical',
-    'transportation',
-    'agriculture',
-    'education',
-  ];
+  // Keep the search/filter/page state reflected in the URL so the page is
+  // refreshable and shareable (e.g. /tenders?search=laptop&state=Tamil%20Nadu).
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (submittedSearch) params.set('search', submittedSearch);
+    else params.delete('search');
+    if (selectedState) params.set('state', selectedState);
+    else params.delete('state');
+    if (selectedCategory) params.set('category', selectedCategory);
+    else params.delete('category');
+    if (page > 1) params.set('page', String(page));
+    else params.delete('page');
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submittedSearch, selectedState, selectedCategory, page]);
 
   const fetchStates = async () => {
     try {
       const result = await liveTenderService.getStates();
-      setStates(result.data ?? []);
+      setStates(Array.isArray(result) ? result : result?.data ?? []);
     } catch (error) {
       console.error('Failed to fetch states:', error);
     }
   };
 
   const fetchTenders = async () => {
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    const response = await liveTenderService.getLiveTenders({
-      ...filters,
-      page,
-      search: searchTerm || undefined,
-      state: selectedState || undefined,
-      category: selectedCategory || undefined,
-    });
+    try {
+      const response = await liveTenderService.getLiveTenders({
+        page,
+        limit: PAGE_SIZE,
+        search: submittedSearch || undefined,
+        state: selectedState || undefined,
+        category: selectedCategory || undefined,
+      });
 
-    console.log("Live Tender Response:", response);
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to load tenders');
+      }
 
-    if (!response.success) {
-      throw new Error(response.message || "Failed to load tenders");
+      setTenders(response.data.data ?? []);
+      setTotal(response.data.pagination.total ?? 0);
+      setTotalPages(response.data.pagination.pages ?? 1);
+    } catch (err: any) {
+      console.error('Failed to fetch live tenders:', err);
+      showError(
+        err.response?.data?.message ||
+          err.message ||
+          'Failed to load live tenders'
+      );
+
+      setTenders([]);
+      setTotal(0);
+      setTotalPages(1);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    setTenders(response.data.data ?? []);
-    setTotal(response.data.pagination.total ?? 0);
-
-  } catch (err: any) {
-    console.error("Failed to fetch live tenders:", err);
-    showError(
-      err.response?.data?.message ||
-      err.message ||
-      "Failed to load live tenders"
-    );
-
-    setTenders([]);
-    setTotal(0);
-
-  } finally {
-    setLoading(false);
-  }
-};
-
+  // Fetch when page, filters, or the submitted search term change. The raw
+  // search input intentionally does not trigger requests on every keystroke.
   useEffect(() => {
     fetchStates();
     fetchTenders();
-  }, [page, selectedCategory, selectedState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, selectedCategory, selectedState, submittedSearch]);
 
   const handleSearch = () => {
+    const term = searchTerm.trim();
+    setSubmittedSearch(term);
     setPage(1);
-    fetchTenders();
   };
 
   const handleDownload = async (tender: LiveTender, e: React.MouseEvent) => {
@@ -128,33 +157,36 @@ export default function TendersPage() {
         </div>
 
         <p className="mb-8 text-gray-600">
-          Browse live tender opportunities from GeM (Government e-Marketplace)
+          Search and browse live tender opportunities from GeM (Government e-Marketplace)
         </p>
-        
+
         {/* Search and Filter Section */}
         <div className="p-6 rounded-[24px] mb-8 glass-card"
-          style={{ 
-            background: 'rgba(255,255,255,0.7)', 
+          style={{
+            background: 'rgba(255,255,255,0.7)',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255,255,255,0.8)', 
-            boxShadow: '0 8px 32px rgba(0,0,0,0.04)' 
+            border: '1px solid rgba(255,255,255,0.8)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.04)'
           }}
         >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="relative">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search tenders..." 
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="Search GeM tenders..."
                 className="w-full p-3 pl-10 rounded-[12px] placeholder:text-gray-400 focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20"
               />
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             </div>
-            <select 
+            <select
               value={selectedState}
-              onChange={(e) => setSelectedState(e.target.value)}
+              onChange={(e) => {
+                setSelectedState(e.target.value);
+                setPage(1);
+              }}
               className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
             >
               <option value="">All States</option>
@@ -162,17 +194,20 @@ export default function TendersPage() {
                 <option key={state} value={state}>{state}</option>
               ))}
             </select>
-            <select 
+            <select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value);
+                setPage(1);
+              }}
               className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
             >
               <option value="">All Categories</option>
-              {categories.map((cat) => (
+              {CATEGORIES.map((cat) => (
                 <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
               ))}
             </select>
-            <button 
+            <button
               onClick={handleSearch}
               className="p-3 rounded-[12px] font-bold transition-all flex items-center justify-center gap-2 text-white hover:-translate-y-0.5 active:scale-95"
               style={{ background: '#16A34A', boxShadow: '0 4px 16px rgba(22,163,74,0.25)' }}
@@ -199,17 +234,16 @@ export default function TendersPage() {
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Filter size={32} className="text-gray-400" />
             </div>
-            <p className="text-gray-500 text-lg mb-2">No live tenders found</p>
+            <p className="text-gray-500 text-lg mb-2">No live GeM tenders found.</p>
             <p className="text-gray-400 text-sm mb-4">Try adjusting your search or filters</p>
-              <button 
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedCategory('');
-                  setSelectedState('');
-                  setFilters({ page: 1, limit: 10 });
-                  setPage(1);
-                  fetchTenders();
-                }}
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSubmittedSearch('');
+                setSelectedCategory('');
+                setSelectedState('');
+                setPage(1);
+              }}
               className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
             >
               Clear Filters
@@ -226,7 +260,7 @@ export default function TendersPage() {
             </div>
             <div className="space-y-4">
               {tenders.map((tender) => (
-                <div 
+                <div
                   key={tender.tenderNumber}
                   className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-100"
                   onClick={() => {
@@ -296,21 +330,21 @@ export default function TendersPage() {
             </div>
 
             {/* Pagination */}
-            {total > 10 && (
+            {totalPages > 1 && (
               <div className="flex justify-center gap-2 mt-8">
                 <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                   className="px-4 py-2 bg-white border border-gray-200 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors font-semibold"
                 >
                   Previous
                 </button>
                 <span className="px-4 py-2 bg-gray-900 text-white rounded-lg font-semibold">
-                  Page {page}
+                  Page {page} of {totalPages}
                 </span>
                 <button
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={page >= Math.ceil(total / 10)}
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page >= totalPages}
                   className="px-4 py-2 bg-white border border-gray-200 rounded-lg disabled:opacity-50 hover:bg-gray-50 transition-colors font-semibold"
                 >
                   Next
