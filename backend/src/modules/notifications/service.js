@@ -5,7 +5,10 @@ const logger = require('../../config/logger');
 class NotificationService {
   constructor() {
     this.subscribers = new Map();
-    this.setupDefaultSubscribers();
+    if (!this._subscribersInitialized) {
+      this.setupDefaultSubscribers();
+      this._subscribersInitialized = true;
+    }
   }
 
   subscribe(eventType, callback) {

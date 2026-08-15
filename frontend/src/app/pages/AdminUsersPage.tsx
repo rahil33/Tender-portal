@@ -4,8 +4,8 @@ import {
   Users, Search, Filter, Eye, UserX, UserCheck, Lock, LogOut, Trash2,
   MoreVertical, Mail, Phone, Building, Calendar, Shield, AlertCircle
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -35,7 +35,6 @@ interface User {
 }
 
 export default function AdminUsersPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(true);
@@ -65,18 +64,16 @@ export default function AdminUsersPage() {
         ...(statusFilter && { isActive: statusFilter === 'active' ? 'true' : 'false' }),
       });
 
-      const res = await fetch(`/api/admin/users?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.get(`/admin/users?${params}`);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setUsers(data.data.data);
+      if (res.data.success) {
+        const data = res.data.data;
+        if (data) {
+          setUsers(data.data);
           setPagination(prev => ({
             ...prev,
-            total: data.data.pagination.total,
-            pages: data.data.pagination.pages,
+            total: data.pagination.total,
+            pages: data.pagination.pages,
           }));
         }
       }
@@ -91,25 +88,19 @@ export default function AdminUsersPage() {
     if (!selectedUser || !actionDialog.type) return;
 
     try {
-      const endpoint = `/api/admin/users/${selectedUser.id}/${actionDialog.type}`;
-      const method = actionDialog.type === 'delete' ? 'DELETE' : 'POST';
-      
-      const res = await fetch(endpoint, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: actionDialog.reason ? JSON.stringify({ reason: actionDialog.reason }) : undefined,
-      });
+      const endpoint = `/admin/users/${selectedUser.id}/${actionDialog.type}`;
+      const reason = actionDialog.reason ? { reason: actionDialog.reason } : undefined;
 
-      if (res.ok) {
+      const res = actionDialog.type === 'delete'
+        ? await api.delete(endpoint)
+        : await api.post(endpoint, reason);
+
+      if (res.data.success) {
         showSuccess(`User ${actionDialog.type}d successfully`);
         fetchUsers();
         setActionDialog({ open: false, type: null, reason: '' });
       } else {
-        const data = await res.json();
-        showError(data.message || 'Action failed');
+        showError(res.data.message || 'Action failed');
       }
     } catch (err: any) {
       showError('Action failed');

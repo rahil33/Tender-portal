@@ -43,6 +43,26 @@ const SEARCHABLE_FIELDS = [
   'tags',
 ];
 
+const STATE_ALIASES = {
+  'tamilnadu': 'Tamil Nadu',
+  'orissa': 'Odisha',
+  'tamil_nadu': 'Tamil Nadu',
+};
+
+function normalizeState(state) {
+  if (!state) return state;
+  const lower = state.trim().toLowerCase().replace(/_/g, ' ');
+  if (STATE_ALIASES[lower]) {
+    return STATE_ALIASES[lower];
+  }
+  return state
+    .trim()
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 class LiveTenderController {
   async getLiveTenders(req, res) {
     try {
@@ -56,6 +76,12 @@ class LiveTenderController {
         state,
         department,
         organization,
+        authority,
+        bidType,
+        minValue,
+        maxValue,
+        deadlineFrom,
+        deadlineTo,
         sortBy = 'createdAt',
         sortOrder = 'desc',
       } = req.query;
@@ -72,6 +98,12 @@ class LiveTenderController {
       const locationValue = cleanText(location, 100);
       const stateValue = cleanText(state, 100);
       const departmentValue = cleanText(department || organization, 100);
+      const authorityValue = cleanText(authority, 100);
+      const bidTypeValue = cleanText(bidType, 10);
+      const minValueNum = parseFloat(minValue);
+      const maxValueNum = parseFloat(maxValue);
+      const deadlineFromDate = deadlineFrom ? new Date(deadlineFrom) : null;
+      const deadlineToDate = deadlineTo ? new Date(deadlineTo) : null;
 
       // GeM-only, live-only base filter. The frontend has no way to request a
       // different source portal.
@@ -103,7 +135,10 @@ class LiveTenderController {
 
       if (categoryValue) query.category = categoryValue;
       if (locationValue) query.location = { $regex: escapeRegex(locationValue), $options: 'i' };
-      if (stateValue) query['metadata.state'] = { $regex: escapeRegex(stateValue), $options: 'i' };
+      if (stateValue) {
+        const normalizedState = normalizeState(stateValue);
+        query['metadata.state'] = { $regex: escapeRegex(normalizedState), $options: 'i' };
+      }
 
       if (departmentValue) {
         const departmentRegex = escapeRegex(departmentValue);
@@ -114,6 +149,41 @@ class LiveTenderController {
             { 'contactInfo.organisation': { $regex: departmentRegex, $options: 'i' } },
           ],
         });
+      }
+
+      // Authority / Organization filter matches the real GeM buyer/department
+      // field (not inferred from the tender title).
+      if (authorityValue) {
+        const authorityRegex = escapeRegex(authorityValue);
+        andConditions.push({
+          $or: [
+            { issuingOrganization: { $regex: authorityRegex, $options: 'i' } },
+            { department: { $regex: authorityRegex, $options: 'i' } },
+            { 'contactInfo.organisation': { $regex: authorityRegex, $options: 'i' } },
+            { 'metadata.ministry': { $regex: authorityRegex, $options: 'i' } },
+          ],
+        });
+      }
+
+      // GeM bid type filter (numeric GeM bid-type value).
+      if (bidTypeValue && /^\d+$/.test(bidTypeValue)) {
+        query['metadata.bidType'] = Number(bidTypeValue);
+      }
+
+      // Bid value range filter (range/RA bids may expose an estimated value).
+      if (Number.isFinite(minValueNum) || Number.isFinite(maxValueNum)) {
+        const valueRange = {};
+        if (Number.isFinite(minValueNum)) valueRange.$gte = minValueNum;
+        if (Number.isFinite(maxValueNum)) valueRange.$lte = maxValueNum;
+        query['budget.estimated'] = valueRange;
+      }
+
+      // Deadline range filter on the GeM bid end date.
+      if (deadlineFromDate && !isNaN(deadlineFromDate.getTime())) {
+        andConditions.push({ submissionDeadline: { $gte: deadlineFromDate } });
+      }
+      if (deadlineToDate && !isNaN(deadlineToDate.getTime())) {
+        andConditions.push({ submissionDeadline: { $lte: deadlineToDate } });
       }
 
       query.$and = andConditions;
@@ -158,16 +228,17 @@ class LiveTenderController {
 
       const tender = await LiveTender.findOne({
         sourcePortal: SOURCE_PORTALS.GEM,
+        isActive: true,
         $or: [
           { 'metadata.gemBidId': tenderId },
           { tenderNumber: tenderId },
         ],
       }).lean();
 
-      if (!tender) {
+      if (!tender || (tender.submissionDeadline && tender.submissionDeadline < new Date())) {
         return res.status(404).json({
           success: false,
-          message: 'Tender not found',
+          message: 'Tender not found or no longer active',
         });
       }
 
@@ -187,11 +258,50 @@ class LiveTenderController {
 
   async getStates(req, res) {
     try {
-      const states = await LiveTender.distinct('metadata.state', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
-      
+      const matchStage = {
+        isActive: true,
+        sourcePortal: SOURCE_PORTALS.GEM,
+      };
+
+      const statesWithCounts = await LiveTender.aggregate([
+        { $match: matchStage },
+        { $unwind: '$metadata.state' },
+        { $group: {
+          _id: '$metadata.state',
+          count: { $sum: 1 },
+        } },
+        { $sort: { _id: 1 } },
+      ]);
+
+      const normalizeState = (state) => {
+        if (!state) return state;
+        return state
+          .trim()
+          .toLowerCase()
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+      };
+
+      const normalizedStates = statesWithCounts
+        .filter(item => item._id && item._id.trim().length > 0)
+        .map(item => ({
+          state: normalizeState(item._id),
+          count: item.count,
+        }))
+        .filter(item => item.state); // remove any that became empty after normalization
+
+      const allStateNames = normalizedStates.map(item => item.state);
+
       res.status(200).json({
         success: true,
-        data: states.filter(Boolean).sort(),
+        data: {
+          states: allStateNames,
+counts: normalizedStates.reduce((acc, item) => {
+              acc[item.state] = item.count;
+              return acc;
+            }, {}),
+        },
       });
     } catch (error) {
       res.status(500).json({
@@ -231,6 +341,23 @@ class LiveTenderController {
       res.status(500).json({
         success: false,
         message: 'Failed to fetch categories',
+        errors: [error.message],
+      });
+    }
+  }
+
+  async getAuthorities(req, res) {
+    try {
+      const authorities = await LiveTender.distinct('issuingOrganization', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
+      
+      res.status(200).json({
+        success: true,
+        data: authorities.filter(Boolean).sort(),
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch authorities',
         errors: [error.message],
       });
     }

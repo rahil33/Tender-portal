@@ -5,8 +5,8 @@ import {
   MoreVertical, Mail, Phone, FileText, Calendar, AlertCircle,
   UserCheck, UserX, Clock
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -33,7 +33,6 @@ interface Organization {
 }
 
 export default function AdminOrganizationsPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(true);
@@ -63,15 +62,13 @@ export default function AdminOrganizationsPage() {
         ...(statusFilter && { isActive: statusFilter === 'active' ? 'true' : 'false' }),
       });
 
-      const res = await fetch(`/api/admin/organizations?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.get(`/admin/organizations?${params}`);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setOrganizations(data.data.data);
-          setPagination(prev => ({ ...prev, total: data.data.pagination.total }));
+      if (res.data.success) {
+        const data = res.data.data;
+        if (data) {
+          setOrganizations(data.data);
+          setPagination(prev => ({ ...prev, total: data.pagination.total }));
         }
       }
     } catch (err: any) {
@@ -84,18 +81,13 @@ export default function AdminOrganizationsPage() {
   const handleVerification = async (isVerified: boolean) => {
     if (!selectedOrg) return;
     try {
-      const res = await fetch(`/api/admin/organizations/${selectedOrg.id}/verify`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ isVerified, verificationNotes: actionDialog.reason }),
+      const res = await api.post(`/admin/organizations/${selectedOrg.id}/verify`, {
+        isVerified,
+        verificationNotes: actionDialog.reason,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(data.message || `Organization ${isVerified ? 'verified' : 'rejected'}`);
+      if (res.data.success) {
+        showSuccess(res.data.message || `Organization ${isVerified ? 'verified' : 'rejected'}`);
         fetchOrganizations();
         setActionDialog({ open: false, type: null, reason: '' });
       } else {
@@ -110,18 +102,12 @@ export default function AdminOrganizationsPage() {
     if (!selectedOrg) return;
     try {
       const endpoint = suspend ? 'suspend' : 'reactivate';
-      const res = await fetch(`/api/admin/organizations/${selectedOrg.id}/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason: actionDialog.reason }),
+      const res = await api.post(`/admin/organizations/${selectedOrg.id}/${endpoint}`, {
+        reason: actionDialog.reason,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(data.message);
+      if (res.data.success) {
+        showSuccess(res.data.message);
         fetchOrganizations();
         setActionDialog({ open: false, type: null, reason: '' });
       } else {

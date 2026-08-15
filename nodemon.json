@@ -1,0 +1,18 @@
+{
+  "watch": [
+    "src",
+    "routes",
+    "modules"
+  ],
+  "ignore": [
+    "logs",
+    "tmp",
+    "temp",
+    "uploads",
+    "coverage",
+    "reports",
+    "dist"
+  ],
+  "ext": "js,json",
+  "delay": "2s"
+}

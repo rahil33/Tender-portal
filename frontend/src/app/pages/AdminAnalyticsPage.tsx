@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { TrendingUp, Users, Building2, FileText, ShoppingBag, ArrowUpRight } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 
 export default function AdminAnalyticsPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { error: showError } = useNotification();
   const [loading, setLoading] = useState(true);
@@ -22,13 +21,10 @@ export default function AdminAnalyticsPage() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/admin/analytics?period=${period}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.get(`/admin/analytics?period=${period}`);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) setAnalytics(data.data);
+      if (res.data.success) {
+        setAnalytics(res.data.data);
       }
     } catch (err: any) {
       showError('Failed to fetch analytics');

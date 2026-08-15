@@ -50,7 +50,7 @@ const routes = [
     path: '/live-tenders',
     routes: liveTendersRoutes,
     description: 'Live tenders from GeM (Government e-Marketplace)',
-    public: true,
+    public: false,
   },
   {
     path: '/bids',

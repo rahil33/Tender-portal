@@ -21,6 +21,7 @@ import SellerDashboardPage from "./pages/SellerDashboardPage";
 import TenderUploadPage from "./pages/TenderUploadPage";
 import BuyerDashboardPage from "./pages/BuyerDashboardPage";
 import MyBidsPage from "./pages/MyBidsPage";
+import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth } from "../contexts/AuthContext";
 import { lazy, Suspense } from "react";
@@ -74,6 +75,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: HomePage },
       { path: "gem-consultant", Component: GemConsultantPage },
+      { path: "login", Component: LoginPage },
       { path: "tenders", Component: TendersPage },
       { path: "tenders/:id", Component: TenderDetailPage },
       { path: "services", Component: ServicesPage },

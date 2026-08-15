@@ -6,8 +6,8 @@ import {
   Eye, Download, ArrowRight, Shield, Settings, BarChart2,
   Activity, Building2
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 
@@ -36,7 +36,6 @@ interface SecurityMetrics {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
 export default function AdminDashboardPage() {
-  const { token } = useAuth();
   const { error: showError } = useNotification();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -51,44 +50,35 @@ export default function AdminDashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
       const [statsRes, securityRes, analyticsRes, auditRes] = await Promise.all([
-        fetch('/api/admin/dashboard/stats', { headers }),
-        fetch('/api/admin/security/metrics', { headers }),
-        fetch('/api/admin/analytics?period=30d', { headers }),
-        fetch('/api/admin/audit/logs?page=1&limit=5', { headers }),
+        api.get('/admin/dashboard/stats'),
+        api.get('/admin/security/metrics'),
+        api.get('/admin/analytics?period=30d'),
+        api.get('/admin/audit/logs?page=1&limit=5'),
       ]);
 
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        if (statsData.success) setStats(statsData.data);
-      }
+      const statsData = statsRes.data;
+      if (statsData.success) setStats(statsData.data);
 
-      if (securityRes.ok) {
-        const securityData = await securityRes.json();
-        if (securityData.success) setSecurityMetrics(securityData.data);
-      }
+      const securityData = securityRes.data;
+      if (securityData.success) setSecurityMetrics(securityData.data);
 
-      if (analyticsRes.ok) {
-        const analyticsResult = await analyticsRes.json();
-        if (analyticsResult.success) setAnalyticsData(analyticsResult.data);
-      }
+      const analyticsResult = analyticsRes.data;
+      if (analyticsResult.success) setAnalyticsData(analyticsResult.data);
 
-      if (auditRes.ok) {
-        const auditData = await auditRes.json();
-        if (auditData.success) {
-          setRecentActivities(
-            auditData.data.data.map((log: any) => ({
-              id: log.id,
-              action: log.action,
-              user: log.performedByEmail || 'System',
-              time: new Date(log.createdAt).toLocaleString(),
-              status: log.status,
-              type: log.resourceType,
-            }))
-          );
-        }
+      const auditData = auditRes.data;
+      if (auditData.success) {
+        setRecentActivities(
+          auditData.data.data.map((log: any) => ({
+            id: log.id,
+            action: log.action,
+            user: log.performedByEmail || 'System',
+            time: new Date(log.createdAt).toLocaleString(),
+            status: log.status,
+            type: log.resourceType,
+          }))
+        );
       }
     } catch (err: any) {
       console.error('Failed to fetch dashboard data:', err);

@@ -18,8 +18,16 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('authToken'));
+  const [user, setUser] = useState<User | null>(() => {
+    const storedUser = localStorage.getItem('user');
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
+
+  const [token, setToken] = useState<string | null>(() => {
+    const storedToken = localStorage.getItem('authToken');
+    return storedToken || null;
+  });
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +38,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshUser = useCallback(() => {
     const storedToken = localStorage.getItem('authToken');
     const storedUser = localStorage.getItem('user');
-    
+
     if (storedToken && storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
@@ -57,8 +65,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const response = await authService.login(data);
 
-      const userData = response.data?.data?.user;
-      const tokenData = response.data?.data?.token;
+      const userData = response.data?.user;
+      const tokenData = response.data?.token;
 
       if (!userData || !tokenData) {
         throw new Error('Invalid authentication response');
@@ -82,8 +90,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setError(null);
     try {
       const response = await authService.register(data);
-      const userData = response.data?.data?.user;
-      const tokenData = response.data?.data?.token;
+      const userData = response.data?.user;
+      const tokenData = response.data?.token;
       if (!userData || !tokenData) {
         throw new Error("Invalid authentication response");
       }

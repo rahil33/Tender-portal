@@ -35,6 +35,12 @@ const liveTenderQueryValidator = [
   query('state').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('State must be a string of at most 100 characters'),
   query('department').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('Department must be a string of at most 100 characters'),
   query('organization').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('Organization must be a string of at most 100 characters'),
+  query('authority').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('Authority must be a string of at most 100 characters'),
+  query('bidType').optional().custom((v) => v === '' || /^\d+$/.test(String(v))).withMessage('Bid type must be a numeric GeM bid type'),
+  query('minValue').optional().custom((v) => v === '' || /^\d+(\.\d+)?$/.test(String(v))).withMessage('Min value must be a number'),
+  query('maxValue').optional().custom((v) => v === '' || /^\d+(\.\d+)?$/.test(String(v))).withMessage('Max value must be a number'),
+  query('deadlineFrom').optional().custom((v) => v === '' || !isNaN(Date.parse(v))).withMessage('Deadline from must be a valid date'),
+  query('deadlineTo').optional().custom((v) => v === '' || !isNaN(Date.parse(v))).withMessage('Deadline to must be a valid date'),
   query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
   query('limit').optional().isInt({ min: 1, max: MAX_LIMIT }).withMessage(`Limit must be between 1 and ${MAX_LIMIT}`),
   query('sortBy').optional().isIn(['createdAt', 'submissionDeadline']).withMessage('Invalid sort field'),
@@ -43,18 +49,20 @@ const liveTenderQueryValidator = [
 ];
 
 /**
- * Public Routes - No authentication required
+ * Protected Routes - Authentication required (all live-tender endpoints)
+ * Unauthenticated requests receive 401 and tender data is never exposed.
  */
-router.get('/', liveTenderQueryValidator, liveTenderController.getLiveTenders);
-router.get('/states', liveTenderController.getStates);
-router.get('/departments', liveTenderController.getDepartments);
-router.get('/categories', liveTenderController.getCategories);
-router.get('/statistics', liveTenderController.getStatistics);
-router.get('/sync-status', liveTenderController.getSyncStatus);
-router.get('/:tenderId', liveTenderController.getTenderById);
+router.get('/', protect, liveTenderQueryValidator, liveTenderController.getLiveTenders);
+router.get('/states', protect, liveTenderController.getStates);
+router.get('/departments', protect, liveTenderController.getDepartments);
+router.get('/categories', protect, liveTenderController.getCategories);
+router.get('/authorities', protect, liveTenderController.getAuthorities);
+router.get('/statistics', protect, liveTenderController.getStatistics);
+router.get('/sync-status', protect, liveTenderController.getSyncStatus);
+router.get('/:tenderId', protect, liveTenderController.getTenderById);
 
 /**
- * Admin Only Routes - Authentication required
+ * Admin Only Routes - Authentication + admin role required
  */
 router.post('/manual-sync', protect, authorize(ROLES.ADMIN), liveTenderController.manualSync);
 router.delete('/cache', protect, authorize(ROLES.ADMIN), liveTenderController.clearCache);

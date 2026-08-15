@@ -93,7 +93,8 @@ class GeMScraperService {
     this.maxRetries = 3;
     this.retryDelay = 2000;
     this.maxPages = parseInt(process.env.GEM_MAX_PAGES, 10) || 5;
-    this.pageSize = 10;
+    const parsedPageSize = parseInt(process.env.GEM_PAGE_SIZE, 10);
+    this.pageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : 10;
   }
 
   async fetchWithRetry(fn, retryCount = 0) {
@@ -195,8 +196,9 @@ class GeMScraperService {
     const session = await this.getSession();
     const tenders = [];
     let numFound = 0;
+    let page = 1;
 
-    for (let page = 1; page <= this.maxPages; page++) {
+    while (true) {
       const solr = await this.fetchPage(session, page);
       numFound = solr.numFound || 0;
 
@@ -215,6 +217,8 @@ class GeMScraperService {
       if (page >= totalPages) {
         break;
       }
+
+      page++;
     }
 
     logger.info(`Fetched ${tenders.length} tenders from GeM (${numFound} ongoing on portal)`);
@@ -248,6 +252,24 @@ class GeMScraperService {
     const title = boqTitle || categoryName || bidNumber;
     const category = this.detectCategory(`${categoryName || ''} ${title || ''}`);
 
+    // GeM may expose a delivery/city/state location field on some bids. Only
+    // use it when actually present; never invent a location. Falls back to
+    // generic "India" so records always have a location value.
+    const gemState = first('b_delivery_state') || first('ba_state_name');
+    const gemCity = first('b_delivery_city') || first('ba_city_name');
+    const metaState = typeof gemState === 'string' && gemState.trim() ? gemState.trim() : undefined;
+    const metaCity = typeof gemCity === 'string' && gemCity.trim() ? gemCity.trim() : undefined;
+
+    // Bid value: range/RA bids may expose an estimated/cleared value. Only set
+    // when a positive numeric field is present; otherwise the value stays
+    // unknown and the value filter simply does not match.
+    const rawValue = first('b_bid_value') ?? first('b_reserve_price') ?? first('b_estimated_value');
+    let estimatedValue;
+    const parsedValue = typeof rawValue === 'string' ? parseFloat(rawValue.replace(/[^0-9.]/g, '')) : parseFloat(rawValue);
+    if (Number.isFinite(parsedValue) && parsedValue > 0) {
+      estimatedValue = parsedValue;
+    }
+
     const bidUrlPath = gemBidUrlPath(doc);
     const officialUrl = normalizeGemTenderUrl(bidUrlPath);
 
@@ -263,6 +285,28 @@ class GeMScraperService {
       department ? `Department: ${department}` : null,
     ].filter(Boolean).join('. ') || `GeM tender ${bidNumber}`;
 
+    // Extract the bid download / catalogue URL from GeM data.
+    //
+    // GeM does not expose a per-bid document token in the listing payload we
+    // consume, but the official bid document page path (showbidDocument / RA
+    // schedule variants) is what the GeM listing itself links to and it loads
+    // the real bid catalogue/document. We derive bidDownloadUrl from that
+    // verifiedGeM path only. If GeM later exposes an explicit showCatalogue
+    // token field, it can be preferred here -- but we never fabricate a token,
+    // so when no reliable catalogue URL exists bidDownloadUrl stays undefined
+    // and the UI falls back to "Bid document unavailable".
+    let bidDownloadUrl = undefined;
+    const explicitCatalogue = first('b_catalogue_url');
+    if (explicitCatalogue && typeof explicitCatalogue === 'string' && explicitCatalogue.trim()) {
+      const normalized = normalizeGemTenderUrl(explicitCatalogue.trim());
+      if (normalized) {
+        bidDownloadUrl = normalized;
+      }
+    }
+    if (!bidDownloadUrl) {
+      bidDownloadUrl = officialUrl;
+    }
+
     return {
       tenderNumber: bidNumber,
       title,
@@ -271,9 +315,9 @@ class GeMScraperService {
       status: 'open',
       issuingOrganization: ministry || department || 'Government of India',
       department: department || '',
-      location: 'India',
+      location: metaState || 'India',
       tenderType: 'government',
-      budget: {},
+      budget: estimatedValue ? { estimated: estimatedValue, currency: 'INR', budgetType: 'fixed' } : {},
       submissionDeadline: new Date(endDate),
       openingDate: startDate ? new Date(startDate) : undefined,
       originalUrl: officialUrl,
@@ -282,8 +326,8 @@ class GeMScraperService {
         source: 'GEM',
         gemBidId: bidId,
         ministry: ministry || '',
-        state: undefined,
-        city: undefined,
+        state: metaState,
+        city: metaCity,
         corrigendumCount: 0,
         boqUrl: boqTitle ? officialUrl : undefined,
         tenderPdfUrl: officialUrl,
@@ -291,6 +335,7 @@ class GeMScraperService {
         isHighValue: !!doc.is_high_value,
         isRateContract: Number(first('is_rc_bid')) === 1,
         isGlobalTendering: Number(first('ba_is_global_tendering')) === 1,
+        bidDownloadUrl: bidDownloadUrl,
       },
       documents: [{
         documentName: 'GeM Bid Document',

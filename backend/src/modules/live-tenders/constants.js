@@ -56,8 +56,8 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
-const SYNC_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-const SYNC_INTERVAL_FAST_MS = 30 * 60 * 1000; // 30 minutes
+const SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const SYNC_INTERVAL_FAST_MS = 5 * 60 * 1000; // 5 minutes
 
 module.exports = {
   SOURCE_PORTALS,

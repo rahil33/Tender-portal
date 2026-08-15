@@ -4,8 +4,8 @@ import {
   FileText, Search, Filter, Download, Calendar, User, Clock,
   CheckCircle, XCircle, AlertCircle, Mail, Bell
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -19,7 +19,6 @@ import {
 import { Label } from '../components/ui/label';
 
 export default function AdminAuditLogsPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(true);
@@ -41,15 +40,13 @@ export default function AdminAuditLogsPage() {
         ...filters,
       });
 
-      const res = await fetch(`/api/admin/audit/logs?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.get(`/admin/audit/logs?${params}`);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setLogs(data.data.data);
-          setPagination(prev => ({ ...prev, total: data.data.pagination.total }));
+      if (res.data.success) {
+        const data = res.data.data;
+        if (data) {
+          setLogs(data.data);
+          setPagination(prev => ({ ...prev, total: data.pagination.total }));
         }
       }
     } catch (err: any) {
@@ -61,20 +58,18 @@ export default function AdminAuditLogsPage() {
 
   const exportLogs = async (format: 'csv' | 'pdf') => {
     try {
-      const res = await fetch(`/api/admin/audit/logs/export?format=${format}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+      const res = await api.get(`/admin/audit/logs/export?format=${format}`, {
+        responseType: 'blob',
       });
 
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${format}`;
-        a.click();
-        showSuccess('Export successful');
-        setExportDialog(false);
-      }
+      const blob = res.data as Blob;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.${format}`;
+      a.click();
+      showSuccess('Export successful');
+      setExportDialog(false);
     } catch (err: any) {
       showError('Export failed');
     }

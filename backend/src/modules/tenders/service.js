@@ -60,7 +60,7 @@ class TendersService {
   }
 
   async _checkDuplicateTenderNumber(tenderNumber) {
-    const existing = await Tender.findOne({ tenderNumber, isDeleted: false });
+    const existing = await Tender.findOne({ tenderNumber, isDeleted: { $ne: true } });
     if (existing) {
       throw new Error('A tender with this number already exists');
     }
@@ -106,7 +106,7 @@ class TendersService {
 
   async getTenderById(tenderId) {
     try {
-      const tender = await Tender.findOne({ _id: tenderId, isDeleted: false })
+      const tender = await Tender.findOne({ _id: tenderId, isDeleted: { $ne: true } })
         .lean()
         .select('-__v');
 
@@ -200,7 +200,7 @@ class TendersService {
   async getAllTenders(page = DEFAULT_PAGE, limit = DEFAULT_LIMIT, filters = {}) {
     try {
       const skip = (page - 1) * limit;
-      const query = { isDeleted: false };
+      const query = { isDeleted: { $ne: true } };
 
       if (filters.status) {
         query.status = filters.status;
@@ -301,7 +301,7 @@ class TendersService {
       const query = {
         status: TENDER_STATUS.PUBLISHED,
         isArchived: false,
-        isDeleted: false,
+        isDeleted: { $ne: true },
         $or: [
           { title: { $regex: searchTerm, $options: 'i' } },
           { tenderNumber: { $regex: searchTerm, $options: 'i' } },

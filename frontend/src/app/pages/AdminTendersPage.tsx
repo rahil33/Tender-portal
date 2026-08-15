@@ -5,8 +5,8 @@ import {
   Archive, RotateCcw, Trash2, MoreVertical, Calendar, Building,
   User, DollarSign, Tag, AlertTriangle, Shield, Download
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -37,7 +37,6 @@ interface Tender {
 }
 
 export default function AdminTendersPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { tenderId } = useParams<{ tenderId: string }>();
   const { error: showError, success: showSuccess } = useNotification();
@@ -67,17 +66,15 @@ export default function AdminTendersPage() {
         ...(categoryFilter && { category: categoryFilter }),
       });
 
-      const res = await fetch(`/api/admin/tenders?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.get(`/admin/tenders?${params}`);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setTenders(data.data.data);
+      if (res.data.success) {
+        const data = res.data.data;
+        if (data) {
+          setTenders(data.data);
           setPagination(prev => ({
             ...prev,
-            total: data.data.pagination.total,
+            total: data.pagination.total,
           }));
         }
       }
@@ -92,24 +89,16 @@ export default function AdminTendersPage() {
     if (!selectedTender || !actionDialog.type) return;
 
     try {
-      const endpoint = `/api/admin/tenders/${selectedTender.id}/${actionDialog.type}`;
-      
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const endpoint = `/admin/tenders/${selectedTender.id}/${actionDialog.type}`;
 
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(data.message || `Tender ${actionDialog.type}d successfully`);
+      const res = await api.post(endpoint);
+
+      if (res.data.success) {
+        showSuccess(res.data.message || `Tender ${actionDialog.type}d successfully`);
         fetchTenders();
         setActionDialog({ open: false, type: null });
       } else {
-        const data = await res.json();
-        showError(data.message || 'Action failed');
+        showError(res.data.message || 'Action failed');
       }
     } catch (err: any) {
       showError('Action failed');
@@ -136,7 +125,6 @@ export default function AdminTendersPage() {
     return (
       <TenderDetail
         tender={selectedTender}
-        token={token!}
         onBack={() => navigate('/admin/tenders')}
         onAction={(type: any) => openActionDialog(selectedTender, type)}
       />
@@ -374,7 +362,7 @@ export default function AdminTendersPage() {
 }
 
 // Tender Detail Component
-function TenderDetail({ tender, token, onBack, onAction }: any) {
+function TenderDetail({ tender, onBack, onAction }: any) {
   const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(false);
 

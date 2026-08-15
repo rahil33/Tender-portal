@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { MapPin, Building2, ExternalLink, Clock, Tag } from 'lucide-react';
+import { MapPin, Building2, ExternalLink, Clock, Tag, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 import { liveTenderService, LiveTender } from '../../services/liveTenderService';
 import { LoadingSpinner, Skeleton } from '../../components/Loading';
+import { useAuth } from '../../contexts/AuthContext';
+import { AuthModal } from './AuthModal';
 
 export const TenderList: React.FC = () => {
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [tenders, setTenders] = useState<LiveTender[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchTenders = async () => {
@@ -22,6 +26,11 @@ export const TenderList: React.FC = () => {
         });
         setTenders(response.data?.data ?? []);
       } catch (err: any) {
+        if (err.response?.status === 401) {
+          setError(null);
+          setTenders([]);
+          return;
+        }
         console.error('Failed to fetch tenders:', err);
         setError(err.response?.data?.message || 'Failed to load tenders');
       } finally {
@@ -29,8 +38,13 @@ export const TenderList: React.FC = () => {
       }
     };
 
-    fetchTenders();
-  }, []);
+    if (isAuthenticated) {
+      fetchTenders();
+    } else {
+      setLoading(false);
+      setTenders([]);
+    }
+  }, [isAuthenticated]);
 
   if (loading) {
     return (
@@ -67,6 +81,44 @@ export const TenderList: React.FC = () => {
             </button>
           </div>
         </div>
+      </section>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <section className="py-24 relative overflow-hidden bg-[#F8FAFC]">
+        <div className="max-w-[1200px] mx-auto px-4 relative z-10">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+            <div className="max-w-2xl">
+              <span className="font-bold uppercase tracking-widest text-sm mb-3 block text-[#2563EB]">Market Opportunities</span>
+              <h2 className="text-4xl font-bold mb-4 text-[#111827]">Latest Active Tenders</h2>
+              <p className="text-lg leading-relaxed text-[#6B7280]">
+                Real-time feed of the most recent GeM procurement opportunities across India.
+              </p>
+            </div>
+            <Link
+              to="/tenders"
+              className="px-6 py-2.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-2 text-white bg-[#111827] hover:bg-[#2563EB] shadow-md"
+            >
+              Browse All <ExternalLink size={18} />
+            </Link>
+          </div>
+          <div className="p-12 bg-white border border-[#E5E7EB] rounded-2xl text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <LogIn size={30} className="text-gray-500" />
+            </div>
+            <p className="text-lg font-bold text-[#111827] mb-2">Login Required</p>
+            <p className="text-sm text-[#6B7280] mb-6">Please sign in to access live GeM tenders.</p>
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="px-8 py-3 rounded-lg font-bold transition-all cursor-pointer text-white bg-[#16A34A] hover:bg-[#15803D]"
+            >
+              Login
+            </button>
+          </div>
+        </div>
+        <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} mode="login" />
       </section>
     );
   }
@@ -238,12 +290,20 @@ export const TenderList: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-8 py-7 text-right">
-                    <Link 
-                      to={`/tenders/${tender._id}`}
-                      className="inline-block px-6 py-2.5 text-[#111827] bg-white border border-[#E5E7EB] text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer active:scale-95 hover:border-[#111827]"
-                    >
-                      View Details
-                    </Link>
+                    {tender.metadata?.bidDownloadUrl ? (
+                      <a
+                        href={tender.metadata.bidDownloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block px-6 py-2.5 text-[#16A34A] bg-white border border-[#16A34A]/40 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer active:scale-95 hover:bg-[#16A34A]/5"
+                      >
+                        Download Bid
+                      </a>
+                    ) : (
+                      <span className="inline-block px-6 py-2.5 text-[#9CA3AF] text-xs font-bold whitespace-nowrap">
+                        Bid doc unavailable
+                      </span>
+                    )}
                   </td>
                 </motion.tr>
               ))}
@@ -254,9 +314,8 @@ export const TenderList: React.FC = () => {
         {/* Mobile View (Cards) */}
         <div className="lg:hidden flex flex-col gap-6">
           {tenders.map((tender) => (
-            <Link 
+            <div
               key={tender._id}
-              to={`/tenders/${tender._id}`}
               className="p-6 rounded-2xl flex flex-col gap-4 transition-all bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md"
             >
               <div className="flex justify-between items-center">
@@ -298,10 +357,21 @@ export const TenderList: React.FC = () => {
                 <MapPin size={14} className="text-[#6B7280]" />
                 {tender.location || 'India'}
               </div>
-              <button className="w-full py-3 font-bold rounded-xl text-sm cursor-pointer transition-all text-[#111827] bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC]">
-                View Tender Details
-              </button>
-            </Link>
+              {tender.metadata?.bidDownloadUrl ? (
+                <a
+                  href={tender.metadata.bidDownloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 font-bold rounded-xl text-sm cursor-pointer transition-all text-[#16A34A] bg-white border border-[#16A34A]/40 hover:bg-[#16A34A]/5 text-center"
+                >
+                  Download Bid
+                </a>
+              ) : (
+                <span className="w-full py-3 font-bold rounded-xl text-sm text-center text-[#9CA3AF] bg-[#F8FAFC] border border-[#E5E7EB]">
+                  Bid document unavailable
+                </span>
+              )}
+            </div>
           ))}
         </div>
       </div>

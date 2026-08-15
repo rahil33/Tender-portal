@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { Bell, Mail, Users, Send, Search, Filter, AlertCircle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -17,7 +17,6 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 
 export default function AdminNotificationsPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(false);
@@ -28,12 +27,9 @@ export default function AdminNotificationsPage() {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/notifications/failed', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) setNotifications(data.data.data || []);
+      const res = await api.get('/admin/notifications/failed');
+      if (res.data.success) {
+        setNotifications(res.data.data?.data || []);
       }
     } catch (err: any) {
       showError('Failed to fetch notifications');
@@ -48,18 +44,10 @@ export default function AdminNotificationsPage() {
 
   const handleBroadcast = async () => {
     try {
-      const res = await fetch('/api/admin/notifications/broadcast', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(broadcastData),
-      });
+      const res = await api.post('/admin/notifications/broadcast', broadcastData);
 
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(data.message || 'Notification broadcasted');
+      if (res.data.success) {
+        showSuccess(res.data.message || 'Notification broadcasted');
         setBroadcastDialog(false);
         setBroadcastData({ title: '', message: '', type: 'info', targetAudience: 'all' });
       } else {
@@ -72,14 +60,10 @@ export default function AdminNotificationsPage() {
 
   const handleRetry = async (notificationId: string) => {
     try {
-      const res = await fetch(`/api/admin/notifications/${notificationId}/retry`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.post(`/admin/notifications/${notificationId}/retry`);
 
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(data.message || 'Retry initiated');
+      if (res.data.success) {
+        showSuccess(res.data.message || 'Retry initiated');
         fetchNotifications();
       }
     } catch (err: any) {

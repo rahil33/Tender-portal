@@ -122,6 +122,9 @@ const tenderSchema = new mongoose.Schema(
       isHighValue: Boolean,
       isRateContract: Boolean,
       isGlobalTendering: Boolean,
+      bidDownloadUrl: {
+        type: String,
+      },
     },
     documents: [{
       documentName: String,

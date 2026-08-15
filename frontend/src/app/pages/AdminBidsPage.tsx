@@ -5,8 +5,8 @@ import {
   Flag, DollarSign, MoreVertical, Calendar, Building, User,
   Download, AlertTriangle, Shield
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -21,7 +21,6 @@ import {
 } from '../components/ui/dialog';
 
 export default function AdminBidsPage() {
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(true);
@@ -37,15 +36,13 @@ export default function AdminBidsPage() {
   const fetchBids = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/admin/bids?page=${pagination.page}&limit=${pagination.limit}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await api.get(`/admin/bids?page=${pagination.page}&limit=${pagination.limit}`);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setBids(data.data.data);
-          setPagination(prev => ({ ...prev, total: data.data.pagination.total }));
+      if (res.data.success) {
+        const data = res.data.data;
+        if (data) {
+          setBids(data.data);
+          setPagination(prev => ({ ...prev, total: data.pagination.total }));
         }
       }
     } catch (err: any) {
@@ -59,19 +56,11 @@ export default function AdminBidsPage() {
     if (!selectedBid || !actionDialog.type) return;
 
     try {
-      const endpoint = `/api/admin/bids/${selectedBid.id}/${actionDialog.type}`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ reason: actionDialog.reason }),
-      });
+      const endpoint = `/admin/bids/${selectedBid.id}/${actionDialog.type}`;
+      const res = await api.post(endpoint, { reason: actionDialog.reason });
 
-      if (res.ok) {
-        const data = await res.json();
-        showSuccess(data.message);
+      if (res.data.success) {
+        showSuccess(res.data.message);
         fetchBids();
         setActionDialog({ open: false, type: null, reason: '' });
       } else {

@@ -13,6 +13,7 @@ class LiveTenderSyncService {
       totalUpdated: 0,
       totalSkipped: 0,
       totalFailed: 0,
+      totalExpired: 0,
       syncDuration: 0,
       lastError: null,
       isSyncing: false,
@@ -108,7 +109,7 @@ class LiveTenderSyncService {
       }
       
       logger.info(`Processing ${tenders.length} GeM tenders...`);
-      
+
       let inserted = 0;
       let updated = 0;
       let skipped = 0;
@@ -139,10 +140,13 @@ class LiveTenderSyncService {
         }
       }
 
-      await this.markExpiredTenders();
+      // Mark tenders whose GeM bid end date has passed as closed + inactive so
+      // they never reappear in Live Tenders / search / filters.
+      const expired = await this.markExpiredTenders();
+      const removed = expired;
 
       const duration = Date.now() - startTime;
-      
+
       this.syncStats = {
         ...this.syncStats,
         lastSyncAt: new Date(),
@@ -151,14 +155,17 @@ class LiveTenderSyncService {
         totalUpdated: updated,
         totalSkipped: skipped,
         totalFailed: failed,
+        totalExpired: removed,
         syncDuration: duration,
         isSyncing: false,
       };
 
       logger.info('GeM tender synchronization completed', {
+        fetched: tenders.length,
         inserted,
         updated,
         skipped,
+        expired: removed,
         failed,
         duration,
       });
@@ -220,6 +227,8 @@ class LiveTenderSyncService {
           originalUrl: tenderData.originalUrl,
           gemBidId: tenderData.metadata?.gemBidId || existingTender.metadata.gemBidId,
           ministry: tenderData.metadata?.ministry || existingTender.metadata.ministry,
+          state: tenderData.metadata?.state || existingTender.metadata.state,
+          city: tenderData.metadata?.city || existingTender.metadata.city,
           tenderPdfUrl: tenderData.metadata?.tenderPdfUrl || existingTender.metadata.tenderPdfUrl,
           corrigendumCount: tenderData.metadata?.corrigendumCount || existingTender.metadata.corrigendumCount,
           productCategory: tenderData.metadata?.productCategory || existingTender.metadata.productCategory,
@@ -227,6 +236,7 @@ class LiveTenderSyncService {
           isHighValue: tenderData.metadata?.isHighValue || existingTender.metadata.isHighValue,
           isRateContract: tenderData.metadata?.isRateContract || existingTender.metadata.isRateContract,
           isGlobalTendering: tenderData.metadata?.isGlobalTendering || existingTender.metadata.isGlobalTendering,
+          bidDownloadUrl: tenderData.metadata?.bidDownloadUrl || existingTender.metadata.bidDownloadUrl || undefined,
         },
         lastSyncedAt: new Date(),
         isActive: true,
@@ -266,6 +276,7 @@ class LiveTenderSyncService {
           isHighValue: tenderData.metadata?.isHighValue,
           isRateContract: tenderData.metadata?.isRateContract,
           isGlobalTendering: tenderData.metadata?.isGlobalTendering,
+          bidDownloadUrl: tenderData.metadata?.bidDownloadUrl,
         },
         documents: tenderData.documents || [],
         contactInfo: tenderData.contactInfo || {},

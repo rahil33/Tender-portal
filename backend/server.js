@@ -315,7 +315,7 @@ server = app.listen(PORT, () => {
   ║  Phoenix Tender Tech Backend API               ║
   ║  Server running on http://localhost:${PORT}      ║
   ║  Environment: ${process.env.NODE_ENV || 'development'}           ║
-  ║  Live Tender Sync: Enabled (60 min interval)   ║
+  ║  Live Tender Sync: Enabled (10 min interval)   ║
   ╚════════════════════════════════════════════════╝
   `);
 });

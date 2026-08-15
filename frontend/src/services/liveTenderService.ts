@@ -30,6 +30,8 @@ export interface LiveTender {
     city?: string;
     corrigendumCount?: number;
     productCategory?: string;
+    bidType?: number;
+    bidDownloadUrl?: string;
   };
   documents: Array<{
     documentName: string;
@@ -54,6 +56,12 @@ export interface LiveTenderFilters {
   category?: string;
   location?: string;
   state?: string;
+  authority?: string;
+  bidType?: string | number;
+  minValue?: number;
+  maxValue?: number;
+  deadlineFrom?: string;
+  deadlineTo?: string;
   status?: string;
   isArchived?: boolean;
 }
@@ -90,13 +98,27 @@ export const liveTenderService = {
   },
 
   async getStates() {
-    const response = await api.get<string[]>('/live-tenders/states');
-    return response.data.data ?? [];
+    const response = await api.get<{
+      success: boolean;
+      data: {
+        states: string[];
+        counts: Record<string, number>;
+      };
+    }>('/live-tenders/states');
+    if (response.data.success && response.data.data) {
+      return { states: response.data.data.states, counts: response.data.data.counts };
+    }
+    return { states: [], counts: {} };
   },
 
   async getDepartments() {
     const response = await api.get<string[]>('/live-tenders/departments');
     return response.data.data;
+  },
+
+  async getAuthorities() {
+    const response = await api.get<string[]>('/live-tenders/authorities');
+    return response.data.data ?? [];
   },
 
   async getTenderDetails(tenderId: string) {

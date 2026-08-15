@@ -78,15 +78,16 @@ class TenderSyncScheduler {
       }
     };
 
-    // Schedule sync every 60 minutes (at minute 0)
-    this.syncJob = cron.schedule('0 * * * *', () => {
+    // Schedule sync every 10 minutes (near-real-time within GeM's own
+    // publication/search window of up to 15 minutes, per GeM).
+    this.syncJob = cron.schedule('*/10 * * * *', () => {
       runSync('scheduled');
     }, {
       scheduled: true,
       timezone: 'Asia/Kolkata',
     });
 
-    logger.info('GeM tender sync scheduler started - runs every 60 minutes');
+    logger.info('GeM tender sync scheduler started - runs every 10 minutes');
 
     // Run initial sync after 5 seconds
     setTimeout(() => {
