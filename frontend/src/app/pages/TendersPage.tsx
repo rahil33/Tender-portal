@@ -12,6 +12,7 @@ import {
   Building2,
   MapPin,
   Download,
+  FileText,
   RefreshCw,
   LogIn,
   X,
@@ -19,79 +20,6 @@ import {
 
 const PAGE_SIZE = 10;
 const MAX_VALUE = '5000000000';
-
-const ALL_INDIAN_STATES_AND_UTS = [
-  'All States',
-  'Andhra Pradesh',
-  'Arunachal Pradesh',
-  'Assam',
-  'Bihar',
-  'Chhattisgarh',
-  'Goa',
-  'Gujarat',
-  'Haryana',
-  'Himachal Pradesh',
-  'Jharkhand',
-  'Karnataka',
-  'Kerala',
-  'Madhya Pradesh',
-  'Maharashtra',
-  'Manipur',
-  'Meghalaya',
-  'Mizoram',
-  'Nagaland',
-  'Odisha',
-  'Punjab',
-  'Rajasthan',
-  'Sikkim',
-  'Tamil Nadu',
-  'Telangana',
-  'Tripura',
-  'Uttar Pradesh',
-  'Uttarakhand',
-  'West Bengal',
-  'Andaman and Nicobar Islands',
-  'Chandigarh',
-  'Dadra and Nagar Haveli and Daman and Diu',
-  'Delhi',
-  'Jammu and Kashmir',
-  'Ladakh',
-  'Lakshadweep',
-  'Puducherry',
-];
-
-const STATE_NORMALIZATION_MAP: Record<string, string> = {
-  'tamilnadu': 'Tamil Nadu',
-  'orissa': 'Odisha',
-};
-
-function normalizeState(state: string): string {
-  if (!state) return state;
-  const lower = state.trim().toLowerCase().replace(/_/g, ' ');
-  if (STATE_NORMALIZATION_MAP[lower]) {
-    return STATE_NORMALIZATION_MAP[lower];
-  }
-  return state
-    .trim()
-    .toLowerCase()
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-}
-
-const CATEGORIES = [
-  'goods',
-  'services',
-  'works',
-  'construction',
-  'it_software',
-  'medical',
-  'transportation',
-  'agriculture',
-  'education',
-  'consultancy',
-  'other',
-];
 
 const BID_TYPES = [
   { value: '', label: 'All Bid Types' },
@@ -153,9 +81,11 @@ export default function TendersPage() {
   const [deadlineTo, setDeadlineTo] = useState(initialDeadlineTo);
   const [states, setStates] = useState<string[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [categories, setCategories] = useState<string[]>([]);
   const [authorities, setAuthorities] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [docMenuTender, setDocMenuTender] = useState<LiveTender | null>(null);
 
   // Keep the search/filter/page state reflected in the URL so the page is
   // refreshable and shareable (e.g. /tenders?keyword=laptop&state=Tamil%20Nadu).
@@ -189,9 +119,11 @@ export default function TendersPage() {
     try {
       const stateRes = await liveTenderService.getStates();
       const authRes = await liveTenderService.getAuthorities();
+      const catRes = await liveTenderService.getCategories();
       setStates(Array.isArray(stateRes) ? stateRes : stateRes?.states ?? []);
       setCounts(stateRes.counts ?? {});
       setAuthorities(Array.isArray(authRes) ? authRes : authRes?.data ?? []);
+      setCategories(Array.isArray(catRes) ? catRes : []);
     } catch (error) {
       console.error('Failed to fetch option lists:', error);
     }
@@ -395,7 +327,7 @@ export default function TendersPage() {
                 style={{ maxHeight: 200, overflow: 'auto' }}
               >
                 <option value="">All States</option>
-                {ALL_INDIAN_STATES_AND_UTS.map((state) => (
+                {states.map((state) => (
                   <option key={state} value={state}>
                     {state}
                   </option>
@@ -408,7 +340,7 @@ export default function TendersPage() {
                 className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
               >
                 <option value="">All Categories</option>
-                {CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
                 ))}
               </select>
@@ -567,7 +499,7 @@ export default function TendersPage() {
                         Estimated Value: ₹ {tender.budget.estimated.toLocaleString('en-IN')}
                       </div>
                     ) : null}
-                    <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-3 pt-3 border-t border-gray-100 flex-wrap">
                       {downloadUrl ? (
                         <a
                           href={downloadUrl}
@@ -582,6 +514,16 @@ export default function TendersPage() {
                           <Download size={14} /> Bid document unavailable
                         </span>
                       )}
+                      <button
+                        onClick={() => setDocMenuTender(tender)}
+                        disabled={!((tender.documents ?? []).some((d) => d.url || d.documentUrl))}
+                        title={(tender.documents ?? []).some((d) => d.url || d.documentUrl)
+                          ? 'View tender documents'
+                          : 'No documents available for this tender'}
+                        className="flex items-center gap-1 text-sm font-semibold px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                      >
+                        <FileText size={14} /> Documents
+                      </button>
                     </div>
                   </div>
                 );
@@ -613,6 +555,66 @@ export default function TendersPage() {
           </>
         )}
       </div>
+
+      {/* Documents modal */}
+      {docMenuTender && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDocMenuTender(null)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-gray-900">Tender Documents</h3>
+                <p className="text-xs font-mono text-gray-500 break-all mt-1">{docMenuTender.tenderNumber}</p>
+              </div>
+              <button
+                onClick={() => setDocMenuTender(null)}
+                className="shrink-0 p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                aria-label="Close documents"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {(() => {
+              const docs = docMenuTender.documents ?? [];
+              const available = docs.filter((d) => d.url || d.documentUrl);
+              if (available.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    No documents are available for this tender.
+                  </div>
+                );
+              }
+              return (
+                <ul className="space-y-2 max-h-80 overflow-y-auto">
+                  {available.map((doc, idx) => {
+                    const url = doc.url || doc.documentUrl || '';
+                    const label = doc.name || doc.documentName || 'GeM Document';
+                    const sub = (doc.type || doc.documentType || 'document').toUpperCase();
+                    return (
+                      <li key={idx}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        >
+                          <FileText size={16} className="shrink-0 text-green-600" />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-gray-900 truncate">{label}</span>
+                            <span className="block text-xs text-gray-400">{sub}</span>
+                          </span>
+                          <Download size={14} className="shrink-0 text-gray-400" />
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

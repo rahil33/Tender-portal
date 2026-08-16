@@ -16,19 +16,19 @@ const seedDatabase = async () => {
         email: 'test.admin@phoenixtech.in',
         password: 'GemTest@Admin2026!',
         role: 'admin',
-        fullName: 'Test Admin',
+        fullName: 'Admin',
       },
       {
         email: 'test.seller@phoenixtech.in',
         password: 'GemTest@Seller2026!',
         role: 'seller',
-        fullName: 'Test Seller',
+        fullName: 'Seller',
       },
       {
         email: 'test.buyer@phoenixtech.in',
         password: 'GemTest@Buyer2026!',
         role: 'buyer',
-        fullName: 'Test Buyer',
+        fullName: 'Buyer',
       },
     ];
 
@@ -36,6 +36,15 @@ const seedDatabase = async () => {
       const existingUser = await User.findOne({ email: userData.email });
 
       if (existingUser) {
+        // Display-name only update: never changes password/role. Keeps the
+        // credential in the database untouched while giving the UI the proper
+        // display name (Admin / Seller / Buyer).
+        if (existingUser.fullName !== userData.fullName) {
+          existingUser.fullName = userData.fullName;
+          await existingUser.save();
+          console.log(`✓ Updated display name for: ${userData.email} -> ${userData.fullName}`);
+        }
+
         if (
           existingUser.role === userData.role &&
           existingUser.isActive === true

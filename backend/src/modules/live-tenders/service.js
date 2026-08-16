@@ -9,14 +9,24 @@ class LiveTenderSyncService {
     this.syncStats = {
       lastSyncAt: null,
       lastSyncStatus: null,
+      isSyncing: false,
+      // GeM crawl metrics
+      gemReportedTotal: 0,
+      pagesProcessed: 0,
+      pagesExpected: 0,
+      reachedFinalPage: false,
+      // Document-level write metrics
       totalSynced: 0,
       totalUpdated: 0,
+      totalInserted: 0,
       totalSkipped: 0,
       totalFailed: 0,
       totalExpired: 0,
+      totalRemoved: 0,
       syncDuration: 0,
+      // The last sync that completed a FULL crawl (final GeM page reached).
+      lastSuccessfulFullSyncAt: null,
       lastError: null,
-      isSyncing: false,
     };
   }
 
@@ -85,11 +95,15 @@ class LiveTenderSyncService {
 
     try {
       await this.waitForConnection();
-      
+
       logger.info('Starting GeM tender synchronization...');
 
-      const sourceResult = await gemScraperService.fetchActiveTenders();
-      const tenders = Array.isArray(sourceResult) ? sourceResult : [];
+      const result = await gemScraperService.fetchActiveTenders();
+      const tenders = Array.isArray(result) ? result : (result.tenders || []);
+      const numFound = result.numFound || 0;
+      const pagesProcessed = result.pagesProcessed || 0;
+      const pagesExpected = result.pagesExpected || 0;
+      const reachedFinalPage = result.reachedFinalPage === true;
 
       if (tenders.length === 0) {
         logger.warn('No GeM tenders fetched, keeping existing data');
@@ -98,6 +112,10 @@ class LiveTenderSyncService {
           lastSyncAt: new Date(),
           lastSyncStatus: 'success',
           totalSynced: 0,
+          gemReportedTotal: numFound,
+          pagesProcessed,
+          pagesExpected,
+          reachedFinalPage,
           syncDuration: Date.now() - startTime,
           isSyncing: false,
         };
@@ -107,56 +125,48 @@ class LiveTenderSyncService {
           stats: this.syncStats,
         };
       }
-      
+
       logger.info(`Processing ${tenders.length} GeM tenders...`);
 
-      let inserted = 0;
-      let updated = 0;
-      let skipped = 0;
-      let failed = 0;
-
-      for (const tenderData of tenders) {
-        try {
-          const result = await this.upsertTender(tenderData);
-          if (result.inserted) inserted++;
-          else if (result.updated) updated++;
-          else skipped++;
-        } catch (error) {
-          failed++;
-          logger.error(
-            `Failed to sync GeM tender ${tenderData.tenderNumber || '(unknown)'}`,
-            {
-              gemBidId: tenderData.metadata?.gemBidId,
-              source: tenderData.sourcePortal || SOURCE_PORTALS.GEM,
-              error: error.message,
-              code: error.code,
-              keyPattern: error.keyPattern,
-              keyValue: error.keyValue,
-              validation: error.errors
-                ? Object.entries(error.errors).map(([field, e]) => ({ field, message: e.message }))
-                : undefined,
-            }
-          );
-        }
-      }
+      const { inserted, updated, skipped, failed } = await this.bulkUpsertTenders(tenders);
 
       // Mark tenders whose GeM bid end date has passed as closed + inactive so
       // they never reappear in Live Tenders / search / filters.
       const expired = await this.markExpiredTenders();
-      const removed = expired;
+
+      // Reconciliation safety: only reconcile tenders missing from GeM as
+      // removed/inactive when the FULL crawl completed (final page reached).
+      // On a partial/failed crawl we keep existing records untouched so the
+      // live feed is never wiped by an incomplete fetch.
+      let removed = 0;
+      if (reachedFinalPage) {
+        removed = await this.markRemovedTenders(tenders);
+      } else {
+        logger.warn(
+          'GeM crawl did not reach the final page - skipping removed/cancelled reconciliation to protect live data'
+        );
+      }
 
       const duration = Date.now() - startTime;
 
+      const successfulFullSync = reachedFinalPage && failed === 0;
       this.syncStats = {
         ...this.syncStats,
         lastSyncAt: new Date(),
-        lastSyncStatus: 'success',
+        lastSyncStatus: successfulFullSync ? 'success' : 'partial',
+        gemReportedTotal: numFound,
+        pagesProcessed,
+        pagesExpected,
+        reachedFinalPage,
         totalSynced: inserted + updated,
+        totalInserted: inserted,
         totalUpdated: updated,
         totalSkipped: skipped,
         totalFailed: failed,
-        totalExpired: removed,
+        totalExpired: expired,
+        totalRemoved: removed,
         syncDuration: duration,
+        lastSuccessfulFullSyncAt: successfulFullSync ? new Date() : this.syncStats.lastSuccessfulFullSyncAt,
         isSyncing: false,
       };
 
@@ -165,19 +175,23 @@ class LiveTenderSyncService {
         inserted,
         updated,
         skipped,
-        expired: removed,
+        expired,
+        removed,
         failed,
         duration,
+        reachedFinalPage,
       });
 
       return {
         success: true,
-        message: 'Synchronization completed successfully',
+        message: successfulFullSync
+          ? 'Synchronization completed successfully'
+          : 'Synchronization completed with warnings (partial crawl)',
         stats: this.syncStats,
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-      
+
       this.syncStats = {
         ...this.syncStats,
         lastSyncAt: new Date(),
@@ -188,13 +202,122 @@ class LiveTenderSyncService {
       };
 
       logger.error('Tender synchronization failed', { error: error.message });
-      
+
       return {
         success: false,
         message: `Synchronization failed: ${error.message}`,
         stats: this.syncStats,
       };
     }
+  }
+
+  /**
+   * Bulk upserts the mapped GeM tenders in chunks.
+   *
+   * Matching is performed on metadata.gemBidId (falling back to tenderNumber)
+   * so repeated syncs update existing records and a single batch can never
+   * create duplicates. Writes are processed unordered so an isolated failure
+   * does not block the remaining tenders; failed records are counted and
+   * logged instead of being silently dropped.
+   *
+   * @param {Array<object>} tenders Mapped GeM tender payloads.
+   * @returns {Promise<{ inserted: number, updated: number, skipped: number, failed: number }>}
+   */
+  async bulkUpsertTenders(tenders) {
+    const chunkSize = 500;
+    let inserted = 0;
+    let updated = 0;
+    let failed = 0;
+
+    for (let i = 0; i < tenders.length; i += chunkSize) {
+      const chunk = tenders.slice(i, i + chunkSize);
+      const operations = chunk.map((tenderData) => {
+        const sourcePortal = tenderData.sourcePortal || SOURCE_PORTALS.GEM;
+        const filter = tenderData.metadata?.gemBidId
+          ? { 'metadata.gemBidId': tenderData.metadata.gemBidId }
+          : { tenderNumber: tenderData.tenderNumber };
+
+        const set = {
+          tenderNumber: tenderData.tenderNumber,
+          title: tenderData.title,
+          description: tenderData.description || 'No description available',
+          category: tenderData.category || 'goods',
+          status: 'published',
+          visibility: 'public',
+          budget: tenderData.budget || {},
+          submissionDeadline: tenderData.submissionDeadline,
+          openingDate: tenderData.openingDate || undefined,
+          issuingOrganization: tenderData.issuingOrganization,
+          location: tenderData.location || 'India',
+          department: tenderData.department || '',
+          tenderType: 'government',
+          tags: this.generateTags(tenderData),
+          metadata: {
+            source: tenderData.metadata?.source || sourcePortal,
+            originalUrl: tenderData.originalUrl,
+            gemBidId: tenderData.metadata?.gemBidId,
+            ministry: tenderData.metadata?.ministry,
+            state: tenderData.metadata?.state,
+            city: tenderData.metadata?.city,
+            corrigendumCount: 0,
+            boqUrl: tenderData.metadata?.boqUrl,
+            corrigendumUrl: tenderData.metadata?.corrigendumUrl,
+            tenderPdfUrl: tenderData.metadata?.tenderPdfUrl,
+            productCategory: tenderData.metadata?.productCategory,
+            bidType: tenderData.metadata?.bidType,
+            isHighValue: tenderData.metadata?.isHighValue,
+            isRateContract: tenderData.metadata?.isRateContract,
+            isGlobalTendering: tenderData.metadata?.isGlobalTendering,
+            bidDownloadUrl: tenderData.metadata?.bidDownloadUrl,
+          },
+          documents: tenderData.documents || [],
+          contactInfo: tenderData.contactInfo || {},
+          sourcePortal,
+          lastSyncedAt: new Date(),
+          isActive: true,
+        };
+
+        return {
+          updateOne: {
+            filter,
+            update: { $set: set, $setOnInsert: { status: 'published', visibility: 'public', tenderType: 'government' } },
+            upsert: true,
+          },
+        };
+      });
+
+      try {
+        const bulkResult = await LiveTender.bulkWrite(operations, { ordered: false });
+        inserted += (bulkResult.upsertedCount || 0) + (bulkResult.insertedCount || 0);
+        updated += bulkResult.modifiedCount || 0;
+        if (bulkResult.writeErrors && bulkResult.writeErrors.length) {
+          failed += bulkResult.writeErrors.length;
+          for (const writeError of bulkResult.writeErrors) {
+            logger.error(
+              `Failed to sync GeM tender (bulk write error)`,
+              {
+                index: writeError.index,
+                gemBidId: chunk[writeError.index]?.metadata?.gemBidId,
+                error: writeError.errmsg,
+                code: writeError.code,
+              }
+            );
+          }
+        }
+      } catch (error) {
+        failed += chunk.length;
+        logger.error('GeM tender bulk upsert failed', {
+          chunkStart: i,
+          error: error.message,
+          code: error.code,
+          keyPattern: error.keyPattern,
+          keyValue: error.keyValue,
+        });
+      }
+    }
+
+    logger.info(`Bulk upsert complete: ${inserted} inserted, ${updated} updated, ${failed} failed`);
+    return { inserted, updated, skipped: 0, failed };
   }
 
   async upsertTender(tenderData) {
@@ -307,6 +430,46 @@ class LiveTenderSyncService {
     );
     
     logger.info(`Marked ${result.modifiedCount} expired tenders as closed`);
+    return result.modifiedCount;
+  }
+
+  /**
+   * Marks as removed/inactive the previously-synced GeM tenders that GeM no
+   * longer reports in a COMPLETE crawl. This keeps the live feed in sync with
+   * the real GeM portal (bids can be withdrawn, merged or end).
+   *
+   * Safety: callers must invoke this ONLY after a full crawl reached GeM's
+   * final page. Records that have no gemBidId are never touched here.
+   *
+   * @param {Array<object>} tenders The tenders present in the current crawl.
+   * @returns {Promise<number>} Number of records marked removed.
+   */
+  async markRemovedTenders(tenders) {
+    const presentBidIds = tenders
+      .map((tender) => tender.metadata && tender.metadata.gemBidId)
+      .filter((id) => typeof id === 'string' && id.length > 0);
+
+    if (presentBidIds.length === 0) {
+      logger.warn('markRemovedTenders: no gemBidId values present in crawl, skipping reconciliation');
+      return 0;
+    }
+
+    const result = await LiveTender.updateMany(
+      {
+        sourcePortal: SOURCE_PORTALS.GEM,
+        isActive: true,
+        'metadata.gemBidId': { $nin: presentBidIds },
+      },
+      {
+        $set: {
+          status: 'closed',
+          isActive: false,
+          lastSyncedAt: new Date(),
+        },
+      }
+    );
+
+    logger.info(`Marked ${result.modifiedCount} GeM tenders as removed (no longer on GeM portal)`);
     return result.modifiedCount;
   }
 

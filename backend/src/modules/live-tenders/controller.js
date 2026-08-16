@@ -58,9 +58,22 @@ function normalizeState(state) {
   return state
     .trim()
     .toLowerCase()
-    .split(' ')
+    .split(/\s+/)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+/**
+ * Builds a case-insensitive regex that matches a state name while tolerating
+ * whitespace differences (e.g. "Tamil Nadu" also matches "TamilNadu" and
+ * "Tamil Nadu"). This makes the state filter robust to the normalization
+ * variations seen across scraped GeM records.
+ */
+function toFlexibleStateRegex(state) {
+  const normalized = normalizeState(state);
+  if (!normalized) return null;
+  const parts = normalized.toLowerCase().split(/\s+/).map(escapeRegex);
+  return new RegExp(`^\\s*${parts.join('\\s*')}\\s*$`, 'i');
 }
 
 class LiveTenderController {
@@ -136,8 +149,10 @@ class LiveTenderController {
       if (categoryValue) query.category = categoryValue;
       if (locationValue) query.location = { $regex: escapeRegex(locationValue), $options: 'i' };
       if (stateValue) {
-        const normalizedState = normalizeState(stateValue);
-        query['metadata.state'] = { $regex: escapeRegex(normalizedState), $options: 'i' };
+        const stateRegex = toFlexibleStateRegex(stateValue);
+        if (stateRegex) {
+          query['metadata.state'] = stateRegex;
+        }
       }
 
       if (departmentValue) {
@@ -256,7 +271,7 @@ class LiveTenderController {
     }
   }
 
-  async getStates(req, res) {
+async getStates(req, res) {
     try {
       const matchStage = {
         isActive: true,
@@ -270,37 +285,29 @@ class LiveTenderController {
           _id: '$metadata.state',
           count: { $sum: 1 },
         } },
-        { $sort: { _id: 1 } },
       ]);
 
-      const normalizeState = (state) => {
-        if (!state) return state;
-        return state
-          .trim()
-          .toLowerCase()
-          .split(' ')
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(' ');
-      };
+      // Normalize each raw state name (handles aliases + casing), merging the
+      // counts of equivalent spellings so the dynamic dropdown never shows
+      // duplicates of the same state.
+      const countsByNormalized = {};
+      for (const item of statesWithCounts) {
+        if (!item._id || typeof item._id !== 'string' || item._id.trim().length === 0) {
+          continue;
+        }
+        const normalized = normalizeState(item._id);
+        if (normalized) {
+          countsByNormalized[normalized] = (countsByNormalized[normalized] || 0) + item.count;
+        }
+      }
 
-      const normalizedStates = statesWithCounts
-        .filter(item => item._id && item._id.trim().length > 0)
-        .map(item => ({
-          state: normalizeState(item._id),
-          count: item.count,
-        }))
-        .filter(item => item.state); // remove any that became empty after normalization
-
-      const allStateNames = normalizedStates.map(item => item.state);
+      const allStateNames = Object.keys(countsByNormalized).sort();
 
       res.status(200).json({
         success: true,
         data: {
           states: allStateNames,
-counts: normalizedStates.reduce((acc, item) => {
-              acc[item.state] = item.count;
-              return acc;
-            }, {}),
+          counts: countsByNormalized,
         },
       });
     } catch (error) {

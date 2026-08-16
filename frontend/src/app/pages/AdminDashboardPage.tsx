@@ -4,7 +4,7 @@ import {
   Users, FileText, ShoppingBag, TrendingUp, CheckCircle,
   Clock, AlertCircle, XCircle, Loader2, Search, Filter,
   Eye, Download, ArrowRight, Shield, Settings, BarChart2,
-  Activity, Building2
+  Activity, Building2, RefreshCw
 } from 'lucide-react';
 import { useNotification } from '../../contexts/NotificationContext';
 import { api } from '../../services/api';
@@ -33,19 +33,57 @@ interface SecurityMetrics {
   roleChanges: number;
 }
 
+interface GeMSyncStatus {
+  lastSyncAt?: string;
+  lastSyncStatus?: string;
+  isSyncing?: boolean;
+  gemReportedTotal?: number;
+  pagesProcessed?: number;
+  pagesExpected?: number;
+  reachedFinalPage?: boolean;
+  totalSynced?: number;
+  totalInserted?: number;
+  totalUpdated?: number;
+  totalSkipped?: number;
+  totalFailed?: number;
+  totalExpired?: number;
+  totalRemoved?: number;
+  syncDuration?: number;
+  lastSuccessfulFullSyncAt?: string;
+  lastError?: string | null;
+}
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
 export default function AdminDashboardPage() {
-  const { error: showError } = useNotification();
+  const { error: showError, success: showSuccess } = useNotification();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [securityMetrics, setSecurityMetrics] = useState<SecurityMetrics | null>(null);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [syncStatus, setSyncStatus] = useState<GeMSyncStatus | null>(null);
+  const [syncingNow, setSyncingNow] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    fetchGeMSync();
+  }, []);
+
+  const fetchGeMSync = async () => {
+    try {
+      const syncRes = await api.get('/live-tenders/sync-status');
+      const syncData = syncRes.data;
+      if (syncData.success && syncData.data) {
+        setSyncStatus(syncData.data.sync ?? null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch GeM sync status:', err);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -88,6 +126,26 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const runManualSync = async () => {
+    if (syncingNow) return;
+    setSyncingNow(true);
+    try {
+      const res = await api.post('/live-tenders/manual-sync');
+      const data = res.data;
+      if (data.success) {
+        showSuccess('GeM sync completed', data.message || 'Synchronization completed');
+      } else {
+        showError(data.message || 'GeM sync failed');
+      }
+      await fetchGeMSync();
+    } catch (err: any) {
+      console.error('Manual sync failed:', err);
+      showError(err.response?.data?.message || err.message || 'Manual sync failed');
+    } finally {
+      setSyncingNow(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -111,6 +169,22 @@ export default function AdminDashboardPage() {
       case 'failure': return { color: '#dc2626', bg: '#fee2e2', icon: <XCircle size={14} /> };
       default: return { color: '#d97706', bg: '#fef3c7', icon: <Clock size={14} /> };
     }
+  };
+
+  const formatDuration = (ms?: number) => {
+    if (!ms || ms <= 0) return 'N/A';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    const seconds = Math.floor(ms / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m ${seconds % 60}s`;
+  };
+
+  const formatDate = (value?: string) => {
+    if (!value) return 'Never';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return 'Never';
+    return date.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   return (
@@ -194,6 +268,76 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="mb-10">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
+              <Activity size={20} />GeM Live Tender Sync
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="text-2xl font-bold text-gray-900">{syncStatus?.gemReportedTotal?.toLocaleString() ?? 'N/A'}</div>
+                <div className="text-xs text-gray-500 font-medium">GeM Ongoing Bids</div>
+              </div>
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="text-2xl font-bold text-gray-900">{syncStatus?.pagesProcessed ?? 0}<span className="text-sm text-gray-400 font-medium"> / {syncStatus?.pagesExpected ?? 0}</span></div>
+                <div className="text-xs text-gray-500 font-medium">Pages Processed</div>
+              </div>
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="text-2xl font-bold text-gray-900">{syncStatus?.totalInserted ?? 0}</div>
+                <div className="text-xs text-gray-500 font-medium">Inserted</div>
+              </div>
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="text-2xl font-bold text-gray-900">{syncStatus?.totalUpdated ?? 0}</div>
+                <div className="text-xs text-gray-500 font-medium">Updated</div>
+              </div>
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="text-2xl font-bold text-gray-900">{syncStatus?.totalExpired ?? 0} / {syncStatus?.totalRemoved ?? 0}</div>
+                <div className="text-xs text-gray-500 font-medium">Expired / Removed</div>
+              </div>
+              <div className="p-4 rounded-xl bg-red-50 border border-red-100">
+                <div className="text-2xl font-bold text-red-600">{syncStatus?.totalFailed ?? 0}</div>
+                <div className="text-xs text-red-700 font-medium">Failed</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
+              <span className="inline-flex items-center gap-1.5">
+                Status:
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold capitalize"
+                  style={(() => {
+                    const status = syncStatus?.isSyncing ? 'syncing' : (syncStatus?.lastSyncStatus || 'never');
+                    const meta = getStatusMeta(syncStatus?.lastSyncStatus || 'never');
+                    return { backgroundColor: meta.bg, color: meta.color };
+                  })()}
+                >
+                  {syncStatus?.isSyncing ? 'Syncing...' : (syncStatus?.lastSyncStatus || 'Never synced')}
+                </span>
+              </span>
+              <span>Last sync: <strong>{formatDate(syncStatus?.lastSyncAt)}</strong></span>
+              <span>Duration: <strong>{formatDuration(syncStatus?.syncDuration)}</strong></span>
+              <span>Final page reached: <strong>{syncStatus?.reachedFinalPage ? 'Yes' : 'No'}</strong></span>
+              <span>Last full sync: <strong>{formatDate(syncStatus?.lastSuccessfulFullSyncAt)}</strong></span>
+            </div>
+
+            {syncStatus?.lastError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 mb-4">
+                Last error: {syncStatus.lastError}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={runManualSync} disabled={syncingNow || !!syncStatus?.isSyncing}>
+                {syncingNow || syncStatus?.isSyncing ? <Loader2 size={16} className="mr-2 animate-spin" /> : <RefreshCw size={16} className="mr-2" />}
+                {syncingNow || syncStatus?.isSyncing ? 'Syncing...' : 'Run GeM Sync Now'}
+              </Button>
+              <Button variant="outline" onClick={fetchGeMSync}>Refresh Status</Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="mb-10">
           <CardHeader><CardTitle className="text-lg font-bold">Recent Activity</CardTitle></CardHeader>

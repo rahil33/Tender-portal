@@ -37,6 +37,10 @@ export interface LiveTender {
     documentName: string;
     documentUrl: string;
     documentType: string;
+    name?: string;
+    url?: string;
+    type?: string;
+    source?: string;
   }>;
   contactInfo: {
     organisation: string;
@@ -109,6 +113,12 @@ export const liveTenderService = {
       return { states: response.data.data.states, counts: response.data.data.counts };
     }
     return { states: [], counts: {} };
+  },
+
+  async getCategories() {
+    const response = await api.get<string[]>('/live-tenders/categories');
+    const categories = response.data.data ?? [];
+    return Array.isArray(categories) ? categories : [];
   },
 
   async getDepartments() {

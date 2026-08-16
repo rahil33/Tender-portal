@@ -21,6 +21,24 @@ const GEM_HOST = 'bidplus.gem.gov.in';
 const GEM_OFFICIAL_HOSTS = new Set(['bidplus.gem.gov.in', 'bid.gem.gov.in', 'www.bidplus.gem.gov.in']);
 
 /**
+ * Returns true when the given URL belongs to an official GeM domain.
+ * Used to validate every external GeM URL before it is stored or displayed.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isOfficialGemUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return GEM_OFFICIAL_HOSTS.has(parsed.hostname.toLowerCase()) && ['https:', 'http:'].includes(parsed.protocol);
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Resolves and validates a GeM tender URL.
  *
  * - Accepts absolute or relative GeM URLs.
@@ -92,9 +110,10 @@ class GeMScraperService {
     this.timeout = 30000;
     this.maxRetries = 3;
     this.retryDelay = 2000;
-    this.maxPages = parseInt(process.env.GEM_MAX_PAGES, 10) || 5;
-    const parsedPageSize = parseInt(process.env.GEM_PAGE_SIZE, 10);
-    this.pageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : 10;
+    // GeM returns a fixed number of results per request regardless of any
+    // requested page size. There is deliberately NO artificial page ceiling:
+    // pagination continues until GeM's own reported result count is exhausted.
+    this.pageSize = 10;
   }
 
   async fetchWithRetry(fn, retryCount = 0) {
@@ -190,19 +209,55 @@ class GeMScraperService {
   }
 
   /**
-   * Fetches ongoing bids from GeM and maps them to the portal's tender schema.
+   * Fetches the complete set of ongoing bids from GeM.
+   *
+   * Pagination is driven entirely by the result metadata GeM returns:
+   *   1. Read GeM's reported total (`numFound`).
+   *   2. Calculate the required number of pages.
+   *   3. Process pages sequentially until the ACTUAL FINAL PAGE.
+   *   4. Stop only when the complete result set has been processed.
+   *
+   * There is no arbitrary `GEM_MAX_PAGES` ceiling. If any page request fails
+   * after retries, the crawl is treated as a critical failure and the error is
+   * propagated so callers do NOT reconcile/expire data on a partial crawl.
+   *
+   * @returns {Promise<{
+   *   tenders: Array<object>,
+   *   numFound: number,
+   *   pagesProcessed: number,
+   *   pagesExpected: number,
+   *   reachedFinalPage: boolean,
+   * }>}
    */
   async fetchActiveTenders() {
     const session = await this.getSession();
     const tenders = [];
     let numFound = 0;
     let page = 1;
+    let reachedFinalPage = false;
+    let pagesProcessed = 0;
 
     while (true) {
       const solr = await this.fetchPage(session, page);
+      pagesProcessed++;
       numFound = solr.numFound || 0;
 
+      const totalPages = Math.ceil(numFound / this.pageSize);
+
+      if (totalPages <= 0) {
+        // No results reported by GeM - nothing to process.
+        break;
+      }
+
       if (!solr.docs || solr.docs.length === 0) {
+        // GeM returned a page with no documents before the reported final
+        // page. This is an incomplete/partial response - do NOT treat the
+        // crawl as a full reconciliation.
+        logger.warn(
+          `GeM returned an empty docs array on page ${page} of ${totalPages} (numFound=${numFound}) - crawl is partial`,
+          { pagesProcessed, numFound, totalPages }
+        );
+        reachedFinalPage = false;
         break;
       }
 
@@ -213,16 +268,29 @@ class GeMScraperService {
         }
       }
 
-      const totalPages = Math.ceil(numFound / this.pageSize);
       if (page >= totalPages) {
+        reachedFinalPage = true;
         break;
+      }
+
+      if (page % 200 === 0) {
+        logger.info(`GeM crawl progress: ${page}/${totalPages} pages processed (${tenders.length} tenders mapped)`);
       }
 
       page++;
     }
 
-    logger.info(`Fetched ${tenders.length} tenders from GeM (${numFound} ongoing on portal)`);
-    return tenders;
+    logger.info(
+      `Fetched ${tenders.length} tenders from GeM (${numFound} ongoing on portal; pages ${pagesProcessed}/${Math.ceil(numFound / this.pageSize) || 0}; final page reached: ${reachedFinalPage})`
+    );
+
+    return {
+      tenders,
+      numFound,
+      pagesProcessed,
+      pagesExpected: Math.ceil(numFound / this.pageSize),
+      reachedFinalPage,
+    };
   }
 
   /**
@@ -238,19 +306,28 @@ class GeMScraperService {
     const bidId = String(first('b_id') || '');
     const bidNumber = first('b_bid_number');
     const categoryName = first('b_category_name');
+    const bidDetailCategories = first('bd_category_name');
     const boqTitle = first('bbt_title');
     const ministry = first('ba_official_details_minName');
     const department = first('ba_official_details_deptName');
     const quantity = first('b_total_quantity');
     const startDate = first('final_start_date_sort');
     const endDate = first('final_end_date_sort');
+    const inactiveFlag = Number(first('b_is_inactive')) || 0;
 
     if (!bidId || !bidNumber || !endDate) {
       return null;
     }
 
+    // GeM marks bids as inactive when they are no longer acceptive. Never
+    // ingest those into the live feed.
+    if (inactiveFlag === 1) {
+      logger.debug(`GeM bid ${bidNumber} skipped (b_is_inactive=1)`, { gemBidId: bidId });
+      return null;
+    }
+
     const title = boqTitle || categoryName || bidNumber;
-    const category = this.detectCategory(`${categoryName || ''} ${title || ''}`);
+    const category = this.detectCategory(`${categoryName || ''} ${bidDetailCategories || ''} ${title || ''}`);
 
     // GeM may expose a delivery/city/state location field on some bids. Only
     // use it when actually present; never invent a location. Falls back to
@@ -341,6 +418,10 @@ class GeMScraperService {
         documentName: 'GeM Bid Document',
         documentUrl: officialUrl,
         documentType: 'tender_document',
+        name: 'GeM Bid Document',
+        url: officialUrl,
+        type: 'tender_document',
+        source: 'GEM',
       }],
       contactInfo: {
         organisation: ministry || department || '',

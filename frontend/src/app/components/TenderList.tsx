@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router';
-import { MapPin, Building2, ExternalLink, Clock, Tag, LogIn } from 'lucide-react';
+import { MapPin, Building2, ExternalLink, Clock, Tag, LogIn, FileText, Download, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { liveTenderService, LiveTender } from '../../services/liveTenderService';
 import { LoadingSpinner, Skeleton } from '../../components/Loading';
@@ -13,6 +13,7 @@ export const TenderList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [docMenuTender, setDocMenuTender] = useState<LiveTender | null>(null);
 
   useEffect(() => {
     const fetchTenders = async () => {
@@ -290,20 +291,32 @@ export const TenderList: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-8 py-7 text-right">
-                    {tender.metadata?.bidDownloadUrl ? (
-                      <a
-                        href={tender.metadata.bidDownloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block px-6 py-2.5 text-[#16A34A] bg-white border border-[#16A34A]/40 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer active:scale-95 hover:bg-[#16A34A]/5"
+                    <div className="flex items-center justify-end gap-2">
+                      {tender.metadata?.bidDownloadUrl ? (
+                        <a
+                          href={tender.metadata.bidDownloadUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block px-6 py-2.5 text-[#16A34A] bg-white border border-[#16A34A]/40 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer active:scale-95 hover:bg-[#16A34A]/5"
+                        >
+                          Download Bid
+                        </a>
+                      ) : (
+                        <span className="inline-block px-6 py-2.5 text-[#9CA3AF] text-xs font-bold whitespace-nowrap">
+                          Bid doc unavailable
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setDocMenuTender(tender)}
+                        disabled={!((tender.documents ?? []).some((d) => d.url || d.documentUrl))}
+                        title={(tender.documents ?? []).some((d) => d.url || d.documentUrl)
+                          ? 'View tender documents'
+                          : 'No documents available for this tender'}
+                        className="inline-block px-6 py-2.5 text-[#2563EB] bg-white border border-[#2563EB]/40 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer active:scale-95 hover:bg-[#2563EB]/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white flex items-center gap-1.5"
                       >
-                        Download Bid
-                      </a>
-                    ) : (
-                      <span className="inline-block px-6 py-2.5 text-[#9CA3AF] text-xs font-bold whitespace-nowrap">
-                        Bid doc unavailable
-                      </span>
-                    )}
+                        <FileText size={14} /> Documents
+                      </button>
+                    </div>
                   </td>
                 </motion.tr>
               ))}
@@ -357,24 +370,98 @@ export const TenderList: React.FC = () => {
                 <MapPin size={14} className="text-[#6B7280]" />
                 {tender.location || 'India'}
               </div>
-              {tender.metadata?.bidDownloadUrl ? (
-                <a
-                  href={tender.metadata.bidDownloadUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 font-bold rounded-xl text-sm cursor-pointer transition-all text-[#16A34A] bg-white border border-[#16A34A]/40 hover:bg-[#16A34A]/5 text-center"
+              <div className="flex items-center gap-2">
+                {tender.metadata?.bidDownloadUrl ? (
+                  <a
+                    href={tender.metadata.bidDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-3 font-bold rounded-xl text-sm cursor-pointer transition-all text-[#16A34A] bg-white border border-[#16A34A]/40 hover:bg-[#16A34A]/5 text-center"
+                  >
+                    Download Bid
+                  </a>
+                ) : (
+                  <span className="flex-1 py-3 font-bold rounded-xl text-sm text-center text-[#9CA3AF] bg-[#F8FAFC] border border-[#E5E7EB]">
+                    Bid document unavailable
+                  </span>
+                )}
+                <button
+                  onClick={() => setDocMenuTender(tender)}
+                  disabled={!((tender.documents ?? []).some((d) => d.url || d.documentUrl))}
+                  title={(tender.documents ?? []).some((d) => d.url || d.documentUrl)
+                    ? 'View tender documents'
+                    : 'No documents available for this tender'}
+                  className="flex-1 py-3 font-bold rounded-xl text-sm cursor-pointer transition-all text-[#2563EB] bg-white border border-[#2563EB]/40 hover:bg-[#2563EB]/5 text-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white flex items-center justify-center gap-1.5"
                 >
-                  Download Bid
-                </a>
-              ) : (
-                <span className="w-full py-3 font-bold rounded-xl text-sm text-center text-[#9CA3AF] bg-[#F8FAFC] border border-[#E5E7EB]">
-                  Bid document unavailable
-                </span>
-              )}
+                  <FileText size={14} /> Documents
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Documents modal */}
+      {docMenuTender && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDocMenuTender(null)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-gray-900">Tender Documents</h3>
+                <p className="text-xs font-mono text-gray-500 break-all mt-1">{docMenuTender.tenderNumber}</p>
+              </div>
+              <button
+                onClick={() => setDocMenuTender(null)}
+                className="shrink-0 p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                aria-label="Close documents"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {(() => {
+              const docs = docMenuTender.documents ?? [];
+              const available = docs.filter((d) => d.url || d.documentUrl);
+              if (available.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    No documents are available for this tender.
+                  </div>
+                );
+              }
+              return (
+                <ul className="space-y-2 max-h-80 overflow-y-auto">
+                  {available.map((doc, idx) => {
+                    const url = doc.url || doc.documentUrl || '';
+                    const label = doc.name || doc.documentName || 'GeM Document';
+                    const sub = (doc.type || doc.documentType || 'document').toUpperCase();
+                    return (
+                      <li key={idx}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                        >
+                          <FileText size={16} className="shrink-0 text-green-600" />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-semibold text-gray-900 truncate">{label}</span>
+                            <span className="block text-xs text-gray-400">{sub}</span>
+                          </span>
+                          <Download size={14} className="shrink-0 text-gray-400" />
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </section>
   );
-};export default liveTenderService;
+};
+
+export default TenderList;

@@ -208,17 +208,29 @@ export default function TenderDetailPage() {
               <div className="bg-card rounded-xl shadow-sm border border-border p-6">
                 <h2 className="text-2xl font-bold text-primary mb-4">Documents</h2>
                 <div className="space-y-3">
-                  {tender.documents.map((doc, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <FileText size={18} className="text-primary" />
-                        <span className="text-sm text-foreground">{doc.documentName}</span>
+                  {tender.documents.map((doc, index) => {
+                    const url = (doc as any).url || (doc as any).documentUrl;
+                    return (
+                      <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText size={18} className="text-primary shrink-0" />
+                          <span className="text-sm text-foreground truncate">{doc.documentName}</span>
+                        </div>
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline text-sm font-semibold shrink-0"
+                          >
+                            Download
+                          </a>
+                        ) : (
+                          <span className="text-sm text-muted-foreground shrink-0">Unavailable</span>
+                        )}
                       </div>
-                      <button className="text-blue-600 hover:underline text-sm font-semibold">
-                        Download
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -238,9 +250,28 @@ export default function TenderDetailPage() {
                 {isAuthenticated ? 'Apply Now' : 'Login to Apply'}
               </button>
               
-              <button className="w-full block text-center border border-gray-200 bg-white text-gray-900 shadow-sm py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors mb-4">
-                Download Documents
-              </button>
+              {(() => {
+                  const docs = (tender.documents ?? []) as Array<{ url?: string; documentUrl?: string }>;
+                  const firstUrl = docs.find((d) => d.url || d.documentUrl);
+                  const target = firstUrl?.url || firstUrl?.documentUrl;
+                  return target ? (
+                    <a
+                      href={target}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full block text-center border border-gray-200 bg-white text-gray-900 shadow-sm py-3 rounded-lg font-bold hover:bg-gray-50 transition-colors mb-4"
+                    >
+                      Download Documents
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="w-full block text-center border border-gray-200 bg-white text-gray-400 shadow-sm py-3 rounded-lg font-bold mb-4 cursor-not-allowed"
+                    >
+                      Documents Unavailable
+                    </button>
+                  );
+                })()}
               
               <Link 
                 to="/contact"

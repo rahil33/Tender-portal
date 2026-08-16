@@ -133,6 +133,15 @@ const tenderSchema = new mongoose.Schema(
         type: String,
         enum: ['tender_notice', 'tender_document', 'corrigendum', 'boq', 'addendum'],
       },
+      // Rich, GeM-native document fields (backward compatible with the legacy
+      // documentName/documentUrl/documentType fields above).
+      name: String,
+      url: String,
+      type: String,
+      source: {
+        type: String,
+        enum: ['GEM'],
+      },
     }],
     contactInfo: {
       organisation: String,
