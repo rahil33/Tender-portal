@@ -77,9 +77,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem('authToken', tokenData);
       localStorage.setItem('user', JSON.stringify(userData));
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Login failed';
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      // Clear stale auth data on login failure so we don't send invalid tokens
+      const loginError = err.response?.data?.message || 'Login failed';
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      setError(loginError);
+      setToken(null);
+      setUser(null);
+      throw new Error(loginError);
     } finally {
       setIsLoading(false);
     }
@@ -101,9 +106,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       localStorage.setItem('authToken', tokenData);
       localStorage.setItem('user', JSON.stringify(userData));
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.errors?.[0] || 'Registration failed';
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      // Clear stale auth data on registration failure
+      const registerError = err.response?.data?.message || err.response?.data?.errors?.[0] || 'Registration failed';
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      setError(registerError);
+      setToken(null);
+      setUser(null);
+      throw new Error(registerError);
     } finally {
       setIsLoading(false);
     }

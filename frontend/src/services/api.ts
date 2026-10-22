@@ -28,8 +28,22 @@ class ApiService {
     this.api.interceptors.request.use(
       (config) => {
         const token = localStorage.getItem('authToken');
+        const hasAuthHeader = !!config.headers.Authorization;
+        const bearerPrefix = token ? token.startsWith('Bearer ') : false;
+        
+        // Safe diagnostics - no secrets logged
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[API interceptor] token present:', !!token);
+          console.debug('[API interceptor] Authorization header exists:', hasAuthHeader);
+          console.debug('[API interceptor] Bearer prefix:', bearerPrefix);
+          console.debug('[API interceptor] VITE_API_URL:', import.meta.env.VITE_API_URL);
+        }
+        
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+        } else if (hasAuthHeader && !bearerPrefix) {
+          // Clear malformed auth header
+          delete config.headers.Authorization;
         }
         return config;
       },
@@ -40,10 +54,26 @@ class ApiService {
       (response: AxiosResponse<ApiResponse>) => response,
       (error: AxiosError<ApiResponse>) => {
         if (error.response?.status === 401) {
-          console.error("401 Unauthorized", error.response.data);
-          //localStorage.removeItem('authToken');
-          //localStorage.removeItem('user');
-          //window.location.href = '/';
+          const authHeader = error.config?.headers?.Authorization;
+          const bearerPresent = authHeader ? authHeader.startsWith('Bearer ') : false;
+          const tokenFromLocalStorage = localStorage.getItem('authToken');
+          
+          // Safe diagnostics - no secrets logged
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('[API response] 401 status received');
+            console.error('[API response] Authorization header from config:', authHeader);
+            console.error('[API response] Bearer prefix present:', bearerPresent);
+            console.error('[API response] authToken in localStorage:', !!tokenFromLocalStorage);
+            console.error('[API response] error name:', error.name);
+            console.error('[API response] error message:', error.message);
+            console.error('[API response] response status:', error.response?.status);
+          }
+          
+          // If token is missing or malformed, clear stale auth data
+          if (!tokenFromLocalStorage || !bearerPresent) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+          }
         }
         return Promise.reject(error);
       }

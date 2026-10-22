@@ -53,7 +53,7 @@ class AuthService {
         phone,
         email,
         password,
-        role: role === 'vendor' || role === 'evaluator' || role === 'buyer' ? role : 'vendor',
+        role: role === 'vendor' || role === 'evaluator' || role === 'buyer' || role === 'seller' ? role : 'vendor',
       });
 
       const token = this._generateToken(user._id, user.role, user.email);

@@ -1,4 +1,14 @@
-require('dotenv').config();
+const dotenv = require('dotenv');
+const path = require('path');
+
+// Load .env from backend directory first, then fallback to CWD
+const backendEnvPath = path.resolve(__dirname, '../../.env');
+const cwdEnvPath = path.resolve(process.cwd(), '.env');
+
+const loaded = dotenv.config({ path: backendEnvPath });
+if (!loaded) {
+  dotenv.config({ path: cwdEnvPath });
+}
 
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -35,15 +45,20 @@ const validateEnv = () => {
   if (missing.length > 0) {
     console.error(`ERROR: Missing required environment variables: ${missing.join(', ')}`);
     console.error('Please set these variables in your .env file or environment');
-    process.exit(1);
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
   
   if (env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
     console.error('ERROR: JWT_SECRET must be set in production!');
-    process.exit(1);
+    throw new Error('JWT_SECRET must be set in production!');
   }
 };
 
-validateEnv();
+try {
+  validateEnv();
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
 
 module.exports = env;

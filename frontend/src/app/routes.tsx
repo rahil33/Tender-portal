@@ -60,6 +60,7 @@ const DashboardRedirect = () => {
     case 'buyer':
       return <Navigate to="/buyer/dashboard" replace />;
     case 'vendor':
+    case 'seller':
       return <Navigate to="/seller/dashboard" replace />;
     case 'admin':
       return <Navigate to="/admin/dashboard" replace />;
@@ -116,7 +117,7 @@ export const router = createBrowserRouter([
       { 
         path: "seller/dashboard", 
         element: (
-          <ProtectedRoute requiredRoles={['vendor']}>
+          <ProtectedRoute requiredRoles={['vendor', 'seller']}>
             <SellerDashboardPage />
           </ProtectedRoute>
         ) 
