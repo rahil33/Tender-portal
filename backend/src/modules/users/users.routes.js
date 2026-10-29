@@ -1,7 +1,7 @@
 const express = require('express');
 const usersController = require('./users.controller');
 const usersValidators = require('./users.validators');
-const { protect } = require('../../middleware/authMiddleware');
+const { protect, authorize } = require('../../middleware/authMiddleware');
 const { validateUserOwnership } = require('../../middleware/ownershipMiddleware');
 
 const router = express.Router();
@@ -28,7 +28,7 @@ router.put('/settings/:userId', usersValidators.updateUserSettings, validateUser
 router.post('/documents', usersValidators.uploadUserDocument, usersController.uploadUserDocument);
 router.get('/:userId/documents', usersValidators.getUserDocuments, validateUserOwnership, usersController.getUserDocuments);
 router.delete('/documents/:documentId', usersValidators.deleteUserDocument, usersController.deleteUserDocument);
-router.put('/documents/:documentId/verify', usersValidators.uploadUserDocument, usersController.updateDocumentVerification);
+router.put('/documents/:documentId/verify', authorize('admin'), usersValidators.uploadUserDocument, usersController.updateDocumentVerification);
 
 /**
  * User Activity Routes
@@ -44,8 +44,8 @@ router.get('/:userId/statistics', usersValidators.getUserProfile, validateUserOw
 /**
  * User Management Routes
  */
-router.get('/', usersValidators.getAllUsers, usersController.getAllUsers);
-router.get('/search', usersValidators.getAllUsers, usersController.searchUsers);
+router.get('/', authorize('admin'), usersValidators.getAllUsers, usersController.getAllUsers);
+router.get('/search', authorize('admin'), usersValidators.getAllUsers, usersController.searchUsers);
 
 /**
  * Account Management Routes

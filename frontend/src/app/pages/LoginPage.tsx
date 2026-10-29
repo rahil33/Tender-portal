@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { authService, User } from '../../services/authService';
+import { useNavigate, useLocation } from 'react-router';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 
 interface LoginFormData {
@@ -12,6 +12,9 @@ export default function LoginPage() {
   const [form, setForm] = useState<LoginFormData>({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login } = useAuth();
+  const from = (location.state as any)?.from?.pathname || '/tenders';
   const { error: showError, success } = useNotification();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -22,11 +25,11 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await authService.login(form);
+      await login(form);
       success('Login successful', 'You are now logged in');
-      navigate('/tenders', { replace: true });
+      navigate(from, { replace: true });
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Login failed';
+      const errorMessage = err.message || 'Login failed';
       showError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -82,14 +85,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-6 text-sm text-center text-gray-500">
-            Not a member? {' '}
-            <a
-              href="#"
-              className="font-medium text-blue-600 hover:underline"
-              onClick={() => navigate('/register', { replace: false })}
-            >
-              Create account
-            </a>
+            Need an account? Use <span className="font-medium">Register</span> from the home page header.
           </p>
         </div>
       </div>

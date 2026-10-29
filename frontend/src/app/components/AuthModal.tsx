@@ -67,7 +67,7 @@ try {
           success('Login successful!', 'Welcome back');
           onClose();
         } else {
-        const result = await register({
+        await register({
           fullName: formData.fullName,
           email: formData.email,
           password: formData.password,
@@ -77,8 +77,7 @@ try {
         });
         success('Registration successful!', 'Welcome to Phoenix Tender');
         onClose();
-        const userRole = result?.data?.user?.role || formData.role;
-        handleRedirect(userRole);
+        handleRedirect(formData.role);
       }
     } catch (err: any) {
       const message = err.message || 'Operation failed';

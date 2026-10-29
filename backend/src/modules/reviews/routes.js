@@ -10,6 +10,7 @@ const Review = require('../../models/Review');
 const { body, query } = require('express-validator');
 const { validationMiddleware } = require('../../middleware/validationMiddleware');
 const mongoose = require('mongoose');
+const { protect, authorize } = require('../../middleware/authMiddleware');
 
 const createReviewValidator = [
   body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 100 }),
@@ -196,7 +197,7 @@ router.patch('/:reviewId/vote', voteReviewValidator, async (req, res) => {
   }
 });
 
-router.get('/admin/all', async (req, res) => {
+router.get('/admin/all', protect, authorize('admin'), async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
     
@@ -229,7 +230,7 @@ router.get('/admin/all', async (req, res) => {
   }
 });
 
-router.patch('/:reviewId/status', async (req, res) => {
+router.patch('/:reviewId/status', protect, authorize('admin'), async (req, res) => {
   try {
     const { status } = req.body;
     
@@ -270,7 +271,7 @@ router.patch('/:reviewId/status', async (req, res) => {
   }
 });
 
-router.delete('/:reviewId', async (req, res) => {
+router.delete('/:reviewId', protect, authorize('admin'), async (req, res) => {
   try {
     const review = await Review.findByIdAndDelete(req.params.reviewId);
     

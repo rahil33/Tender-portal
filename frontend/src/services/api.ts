@@ -74,6 +74,16 @@ class ApiService {
             localStorage.removeItem('authToken');
             localStorage.removeItem('user');
           }
+
+          // Expired/invalid session on a protected call: clear and send to login
+          const reqUrl = error.config?.url || '';
+          if (tokenFromLocalStorage && !reqUrl.includes('/auth/login') && !reqUrl.includes('/auth/register')) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            if (!window.location.pathname.startsWith('/login')) {
+              window.location.href = '/login';
+            }
+          }
         }
         return Promise.reject(error);
       }

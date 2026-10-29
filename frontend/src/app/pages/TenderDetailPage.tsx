@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { Calendar, MapPin, Building2, FileText, Clock, ArrowLeft, ExternalLink, Download, CheckCircle } from 'lucide-react';
-import { tenderService, Tender } from '../../services/tenderService';
+import { liveTenderService, LiveTender as Tender } from '../../services/liveTenderService';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoadingSpinner, Skeleton } from '../../components/Loading';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -24,7 +24,7 @@ export default function TenderDetailPage() {
       setError(null);
       
       try {
-        const response = await tenderService.getTenderById(id);
+        const response = await liveTenderService.getTenderDetails(id);
         setTender(response.data);
       } catch (err: any) {
         console.error('Failed to fetch tender:', err);
