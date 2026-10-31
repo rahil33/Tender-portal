@@ -16,6 +16,7 @@
     "lint:fix": "eslint src/ --fix",
     "seed": "node seed.js",
     "seed:admin": "node src/scripts/seedAdmin.js",
+    "db": "node src/scripts/diagnoseMongo.js",
     "docker:build": "docker build -t phoenix-tender-backend .",
     "docker:run": "docker run -p 5000:5000 --env-file .env phoenix-tender-backend",
     "docker:dev": "docker-compose up",
