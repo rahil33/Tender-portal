@@ -5,6 +5,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('./src/config/database');
 const bcrypt = require('bcryptjs');
 const { faker } = require('@faker-js/faker');
 
@@ -149,15 +150,12 @@ class ProductionSeedService {
   }
 
   async connect() {
-    await mongoose.connect(process.env.MONGO_URI, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 10000,
-    });
+    await database.connect();
     console.log('✓ Connected to MongoDB Atlas');
   }
 
   async disconnect() {
-    await mongoose.connection.close();
+    await database.disconnect();
     console.log('✓ Disconnected from MongoDB Atlas');
   }
 

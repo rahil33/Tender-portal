@@ -18,6 +18,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('../config/database');
 const logger = require('../config/logger');
 const { LiveTender } = require('../modules/live-tenders/model');
 const { SOURCE_PORTALS } = require('../modules/live-tenders/constants');
@@ -25,10 +26,7 @@ const { SOURCE_PORTALS } = require('../modules/live-tenders/constants');
 const apply = process.argv.includes('--apply');
 
 async function main() {
-  const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/tender_portal';
-  await mongoose.connect(mongoUri, {
-    serverSelectionTimeoutMS: 10000,
-  });
+  await database.connect();
   logger.info('Connected to MongoDB for legacy tender cleanup');
 
   const legacyQuery = {
@@ -74,9 +72,9 @@ async function main() {
 }
 
 main()
-  .then(() => mongoose.disconnect())
+  .then(() => database.disconnect())
   .then(() => process.exit(0))
   .catch((error) => {
     logger.error('Cleanup failed', { error: error.message });
-    mongoose.disconnect().finally(() => process.exit(1));
+    database.disconnect().finally(() => process.exit(1));
   });

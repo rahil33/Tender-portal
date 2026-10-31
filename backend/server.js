@@ -1,9 +1,9 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
-const connectDB = require('./src/config/db');
+const database = require('./src/config/database');
 const { apiVersion } = require('./src/middleware/apiVersion');
 const authRoutes = require('./src/modules/auth/routes');
 const dashboardRoutes = require('./src/modules/dashboard/dashboard.routes');
@@ -35,8 +35,8 @@ const app = express();
 let server;
 
 // ─── DATABASE ─────────────────────────────────────────────────────────
-// Connect MongoDB
-connectDB();
+// The connection is opened in startServer() below, BEFORE the HTTP server
+// starts listening (see src/config/database.js).
 
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────
 // Security Headers with Enhanced Configuration
@@ -305,12 +305,29 @@ app.use(errorHandler);
 // ─── SERVER STARTUP ───────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
-// Start Tender Sync Scheduler
 const tenderSyncScheduler = require('./src/services/tenderSyncScheduler');
-tenderSyncScheduler.start();
 
-server = app.listen(PORT, () => {
-  console.log(`
+const startServer = async () => {
+  try {
+    require('./src/config/env').validateEnv();
+  } catch (error) {
+    process.exit(1); // validateEnv already printed the reason
+  }
+
+  try {
+    await database.connect();
+  } catch (error) {
+    logger.error(`✗ MongoDB connection failed [${error.category || 'unknown'}]: ${error.message}`);
+    (error.problems || []).forEach((p) => logger.error(`  - ${p}`));
+    if (error.hint) logger.error(`  Hint: ${error.hint}`);
+    process.exit(1);
+  }
+
+  // Start Tender Sync Scheduler (only once the database is ready)
+  tenderSyncScheduler.start();
+
+  server = app.listen(PORT, () => {
+    console.log(`
   ╔════════════════════════════════════════════════╗
   ║  Phoenix Tender Tech Backend API               ║
   ║  Server running on http://localhost:${PORT}      ║
@@ -318,20 +335,31 @@ server = app.listen(PORT, () => {
   ║  Live Tender Sync: Enabled (10 min interval)   ║
   ╚════════════════════════════════════════════════╝
   `);
-});
+  });
+};
+
+if (require.main === module) {
+  startServer();
+} else if (process.env.NODE_ENV === 'test') {
+  // Imported by Jest: open the DB but do not bind a port or start the scheduler.
+  database.connect({ retries: 0 }).catch((e) => logger.warn(`Test DB connection failed: ${e.message}`));
+}
 
 // ─── GRACEFUL SHUTDOWN ────────────────────────────────────────────────
 const gracefulShutdown = async (signal) => {
   logger.info(`Graceful shutdown initiated (${signal})`);
-  
+
+  if (!server) {
+    try { await database.disconnect(); } catch (e) { logger.error('Error closing MongoDB connection:', e); }
+    process.exit(0);
+  }
+
   if (server) {
     server.close(async () => {
       logger.info('HTTP server closed');
       
       try {
-        const mongoose = require('mongoose');
-        await mongoose.connection.close();
-        logger.info('MongoDB connection closed');
+        await database.disconnect();
       } catch (error) {
         logger.error('Error closing MongoDB connection:', error);
       }

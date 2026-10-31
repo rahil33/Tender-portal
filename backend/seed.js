@@ -5,6 +5,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('./src/config/database');
 const bcrypt = require('bcryptjs');
 
 // Import models
@@ -223,7 +224,7 @@ const seedDatabase = async () => {
     console.log('🌱 Starting database seed...');
     
     // Connect to database
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/tender_portal');
+    await database.connect();
     console.log('✓ Connected to database');
     
     // Clear existing data (optional - comment out to keep existing data)

@@ -6,6 +6,7 @@ const path = require('path');
 const packageJson = require('../../../package.json');
 const AuditLog = require('../../models/AuditLog');
 const logger = require('../../config/logger');
+const database = require('../../config/database');
 
 const router = express.Router();
 
@@ -116,6 +117,8 @@ router.get('/db', async (req, res) => {
       return res.status(503).json({
         status: 'disconnected',
         message: 'Database not connected',
+        connection: database.getStatus(),
+        timestamp: new Date().toISOString(),
       });
     }
     
@@ -132,15 +135,19 @@ router.get('/db', async (req, res) => {
     res.json({
       status: 'healthy',
       connectionState: mongoose.connection.readyState,
+      connection: database.getStatus(),
       responseTime: `${responseTime}ms`,
       statistics: stats,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error('Database health check failed', { error: error.message });
+    const info = database.classifyMongoError(error);
+    logger.error('Database health check failed', { category: info.category, error: info.message });
     res.status(503).json({
       status: 'unhealthy',
-      error: error.message,
+      category: info.category,
+      error: info.message,
+      hint: info.hint,
       timestamp: new Date().toISOString(),
     });
   }

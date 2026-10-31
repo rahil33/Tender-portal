@@ -5,6 +5,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('./database');
 const mongoConfig = require('./mongoConfig');
 
 const setupCollections = async (db) => {
@@ -372,7 +373,7 @@ const main = async () => {
     console.log('║  MongoDB Atlas Enterprise Production Setup            ║');
     console.log('╚════════════════════════════════════════════════════════╝\n');
     
-    await mongoose.connect(process.env.MONGO_URI, mongoConfig.connection);
+    await database.connect();
     console.log('✓ Connected to MongoDB Atlas\n');
     
     const db = mongoose.connection.db;

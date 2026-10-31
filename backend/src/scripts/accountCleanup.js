@@ -1,5 +1,6 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('../config/database');
 const User = require('../models/User');
 
 const APPLY = process.argv.includes('--apply');
@@ -26,7 +27,7 @@ const DISPLAY_NAME_UPDATES = [
 ];
 
 async function main() {
-  await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 });
+  await database.connect();
   console.log('Connected');
 
   const all = await User.find({}).lean();
@@ -80,7 +81,7 @@ async function main() {
     console.log('\nDry-run complete. Re-run with --apply to commit.');
   }
 
-  await mongoose.disconnect();
+  await database.disconnect();
 }
 
 main().catch((e) => { console.error('FAILED', e); process.exit(1); });

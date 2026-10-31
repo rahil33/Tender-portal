@@ -5,6 +5,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('./src/config/database');
 const mongoConfig = require('./src/config/mongoConfig');
 const BackupService = require('./src/services/BackupService');
 const DataIntegrityService = require('./src/services/DataIntegrityService');
@@ -27,12 +28,12 @@ class ProductionReadinessReport {
   }
 
   async connect() {
-    await mongoose.connect(process.env.MONGO_URI, mongoConfig.connection);
+    await database.connect();
     console.log('✓ Connected to MongoDB Atlas');
   }
 
   async disconnect() {
-    await mongoose.connection.close();
+    await database.disconnect();
     console.log('✓ Disconnected from MongoDB Atlas');
   }
 
@@ -131,7 +132,7 @@ class ProductionReadinessReport {
     const checks = [];
 
     // Check TLS (inferred from connection string)
-    const hasTLS = process.env.MONGO_URI.includes('ssl=true');
+    const hasTLS = /^mongodb\+srv:/i.test(process.env.MONGO_URI || '') || (process.env.MONGO_URI || '').includes('tls=true') || (process.env.MONGO_URI || '').includes('ssl=true');
     checks.push({ name: 'TLS Enabled', passed: hasTLS });
     if (hasTLS) score += 15;
 

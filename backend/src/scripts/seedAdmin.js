@@ -1,18 +1,36 @@
-const dns = require('node:dns');
-
-dns.setServers(['8.8.8.8', '1.1.1.1']);
-
-require('dotenv').config();
-const mongoose = require('mongoose');
+const database = require('../config/database');
 const User = require('../models/User');
 
-const INVALID_PASSWORD_HINT = 'CHANGE_THIS_IN_PRODUCTION';
+const PLACEHOLDER_PASSWORD_RE = /^(change[_\s-]?(me|this)|your[_\s-]?password|password|admin|admin123|12345678|placeholder|example|todo|xxx+)/i;
+const MIN_PASSWORD_LENGTH = 10;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@example.com').trim().toLowerCase();
 const ADMIN_FULL_NAME = (process.env.ADMIN_NAME || 'Administrator').trim();
 const ADMIN_ROLE = (process.env.ADMIN_ROLE || 'admin').trim().toLowerCase();
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_RESET_PASSWORD = process.env.ADMIN_RESET_PASSWORD === 'true';
+
+/**
+ * Validates seeder input. Throws with a message that never contains the password.
+ */
+function validateAdminInput({ email, password }) {
+  if (!email) {
+    throw new Error('ADMIN_EMAIL is not set. Set a real admin email in the environment (.env / Render).');
+  }
+  if (!EMAIL_RE.test(email)) {
+    throw new Error('ADMIN_EMAIL is not a valid email address.');
+  }
+  if (/@example\.(com|org|net)$/i.test(email) && process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_EMAIL is still the example placeholder. Use a real address.');
+  }
+  if (!password || PLACEHOLDER_PASSWORD_RE.test(password.trim())) {
+    throw new Error(
+      'ADMIN_PASSWORD is not set or still holds a placeholder. Set a real password in the environment (.env / Render).'
+    );
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`ADMIN_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+  }
+}
 
 /**
  * Seeds the production admin account (idempotent).
@@ -25,17 +43,13 @@ const ADMIN_RESET_PASSWORD = process.env.ADMIN_RESET_PASSWORD === 'true';
  * @returns {Promise<{created: boolean, existed: boolean, resetPassword: boolean}>}
  */
 async function seedAdmin(opts = {}) {
-  const email = (opts.email || ADMIN_EMAIL).trim().toLowerCase();
+  const email = (opts.email || process.env.ADMIN_EMAIL || '').trim().toLowerCase();
   const fullName = (opts.fullName || ADMIN_FULL_NAME).trim();
   const role = (opts.role || ADMIN_ROLE).trim().toLowerCase();
-  const password = opts.password || ADMIN_PASSWORD;
+  const password = opts.password || process.env.ADMIN_PASSWORD;
   const resetPassword = opts.resetPassword === true || ADMIN_RESET_PASSWORD;
 
-  if (!password || password === INVALID_PASSWORD_HINT) {
-    throw new Error(
-      'ADMIN_PASSWORD is not set or still holds a placeholder. Set a real production password in the environment (.env / Render).'
-    );
-  }
+  validateAdminInput({ email, password });
 
   let existing = await User.findOne({ email });
 
@@ -63,19 +77,30 @@ async function seedAdmin(opts = {}) {
       await existing.save();
     }
 
-    await verifyAdmin(existing, email, password);
+    await verifyAdmin(existing, email, password, role);
     return { created: false, existed: true, resetPassword };
   }
 
-  const admin = await User.create({
-    fullName,
-    email,
-    password,
-    role,
-    isActive: true,
-  });
+  let admin;
+  try {
+    admin = await User.create({
+      fullName,
+      email,
+      password,
+      role,
+      isActive: true,
+    });
+  } catch (err) {
+    // Unique index on email: a concurrent run already created it.
+    if (err && err.code === 11000) {
+      existing = await User.findOne({ email });
+      await verifyAdmin(existing, email, password, role);
+      return { created: false, existed: true, resetPassword: false };
+    }
+    throw err;
+  }
 
-  await verifyAdmin(admin, email, password);
+  await verifyAdmin(admin, email, password, role);
   return { created: true, existed: false, resetPassword: false };
 }
 
@@ -83,12 +108,12 @@ async function seedAdmin(opts = {}) {
  * Verifies the admin account is usable for login.
  * Throws if any check fails. Never logs the password.
  */
-async function verifyAdmin(user, email, password) {
+async function verifyAdmin(user, email, password, expectedRole = ADMIN_ROLE) {
   const found = await User.findOne({ email });
   if (!found) {
     throw new Error(`Admin account not found in MongoDB for ${email}`);
   }
-  if (found.role !== ADMIN_ROLE) {
+  if (found.role !== expectedRole) {
     throw new Error(`Admin role verification failed for ${email}`);
   }
   if (found.isActive !== true) {
@@ -104,39 +129,38 @@ async function verifyAdmin(user, email, password) {
 }
 
 async function run() {
-  const mongoUri = process.env.MONGO_URI;
-  if (!mongoUri) {
-    console.error('MONGO_URI is not set. Set MONGO_URI before running seed:admin.');
-    process.exit(1);
+  await database.connect();
+  try {
+    const result = await seedAdmin();
+
+    if (result.created) {
+      console.log('Admin account created successfully.');
+    } else {
+      console.log('Admin account already exists (no duplicate created).');
+    }
+    if (result.resetPassword) {
+      console.log('Admin password was rotated (ADMIN_RESET_PASSWORD=true). Password was never printed.');
+    }
+    return result;
+  } finally {
+    await database.disconnect();
   }
-
-  await mongoose.connect(mongoUri, {
-    serverSelectionTimeoutMS: 15000,
-  });
-
-  const result = await seedAdmin();
-
-  if (result.created) {
-    console.log('Admin account created successfully.');
-  } else {
-    console.log('Admin account already exists.');
-  }
-  if (result.resetPassword) {
-    console.log('Admin password was rotated (ADMIN_RESET_PASSWORD=true). Password was never printed.');
-  }
-
-  await mongoose.disconnect();
-  return result;
 }
 
-module.exports = { seedAdmin, verifyAdmin };
+module.exports = { seedAdmin, verifyAdmin, validateAdminInput };
 
 // Allow running directly: `node src/scripts/seedAdmin.js`
 if (require.main === module) {
   run()
-    .then((result) => process.exit(0))
+    .then(() => process.exit(0))
     .catch((err) => {
-      console.error('\nAdmin seed verification FAILED:', err.message);
+      if (err && err.category) {
+        console.error(`\nAdmin seed FAILED (MongoDB ${err.category} error): ${err.message}`);
+        (err.problems || []).forEach((p) => console.error(`  - ${p}`));
+        if (err.hint) console.error(`Hint: ${err.hint}`);
+      } else {
+        console.error('\nAdmin seed FAILED:', database.redact(err && err.message));
+      }
       process.exit(1);
     });
 }

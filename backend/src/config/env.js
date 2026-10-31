@@ -5,16 +5,16 @@ const path = require('path');
 const backendEnvPath = path.resolve(__dirname, '../../.env');
 const cwdEnvPath = path.resolve(process.cwd(), '.env');
 
-const loaded = dotenv.config({ path: backendEnvPath });
-if (!loaded) {
-  dotenv.config({ path: cwdEnvPath });
+const loaded = dotenv.config({ path: backendEnvPath, quiet: true });
+if (loaded.error) {
+  dotenv.config({ path: cwdEnvPath, quiet: true });
 }
 
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: process.env.PORT || 5000,
   
-  MONGO_URI: process.env.MONGO_URI || 'mongodb://localhost:27017/tender_portal',
+  MONGO_URI: process.env.MONGO_URI,
   
   JWT_SECRET: process.env.JWT_SECRET,
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
@@ -39,7 +39,8 @@ const env = {
 };
 
 const validateEnv = () => {
-  const required = ['MONGO_URI', 'JWT_SECRET'];
+  // MONGO_URI is validated in detail by src/config/database.js (connect()).
+  const required = ['JWT_SECRET'];
   const missing = required.filter(key => !process.env[key]);
   
   if (missing.length > 0) {
@@ -54,11 +55,9 @@ const validateEnv = () => {
   }
 };
 
-try {
-  validateEnv();
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
-}
+// NOT executed at import time: scripts (seed, diagnostics) that only need the
+// logger must not require server-only variables. server.js calls validateEnv()
+// before it connects to the database or binds a port.
+Object.defineProperty(env, 'validateEnv', { value: validateEnv, enumerable: false });
 
 module.exports = env;

@@ -5,6 +5,7 @@
 
 require('dotenv').config();
 const mongoose = require('mongoose');
+const database = require('./src/config/database');
 const assert = require('assert');
 
 class MongoDBInfrastructureTests {
@@ -18,15 +19,12 @@ class MongoDBInfrastructureTests {
   }
 
   async connect() {
-    await mongoose.connect(process.env.MONGO_URI, {
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 10000,
-    });
+    await database.connect();
     console.log('✓ Connected to MongoDB Atlas for testing\n');
   }
 
   async disconnect() {
-    await mongoose.connection.close();
+    await database.disconnect();
     console.log('\n✓ Disconnected from MongoDB Atlas');
   }
 
