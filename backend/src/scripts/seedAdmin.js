@@ -1,38 +1,6 @@
-/**
- * Safe idempotent production admin seed script.
- *
- * Usage (from backend/):
- *   npm run seed:admin
- *
- * All admin configuration is read ONLY from environment variables:
- *   ADMIN_EMAIL     admin email (defaults to admin@example.com if unset)
- *   ADMIN_PASSWORD  admin password — REQUIRED, never hardcoded
- *   ADMIN_NAME      admin full name (defaults to Administrator)
- *   ADMIN_ROLE      admin role (defaults to admin)
- *
- * Optional one-time rotation flag:
- *   ADMIN_RESET_PASSWORD=true  forces the stored password to be re-hashed
- *                              from ADMIN_PASSWORD. Without this flag the
- *                              existing password is NEVER overwritten, so the
- *                              script stays idempotent by default.
- *
- * Behavior:
- *   - Connects with the existing MONGO_URI environment variable.
- *   - Looks up ADMIN_EMAIL.
- *   - If it does NOT exist -> creates the admin (role admin, isActive true).
- *     The password is hashed by the User model's bcrypt pre-save hook; the
- *     plaintext password is never stored or printed.
- *   - If it already exists -> does NOT create a duplicate; only ensures
- *     role === ADMIN_ROLE and isActive === true. The password is reset ONLY
- *     when ADMIN_RESET_PASSWORD=true (one-time rotation/compromise response).
- *   - Self-verifies after seeding: account exists, role matches, isActive is
- *     true, and bcrypt password verification succeeds against ADMIN_PASSWORD.
- *
- * Security rules:
- *   - Never logs or prints the password.
- *   - Does not require JWT_SECRET so it can be run with only MONGO_URI set.
- *   - Does not expose any API endpoint.
- */
+const dns = require('node:dns');
+
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 require('dotenv').config();
 const mongoose = require('mongoose');
