@@ -1,6 +1,10 @@
 const liveTenderSyncService = require('./service');
 const { LiveTender } = require('./model');
-const { SOURCE_PORTALS, DEFAULT_PAGE, DEFAULT_LIMIT, MAX_LIMIT } = require('./constants');
+const { SOURCE_PORTALS, DEFAULT_PAGE, DEFAULT_LIMIT, MAX_LIMIT, BID_TYPE_LABELS, CLASSIFICATION } = require('./constants');
+const { liveTenderQuery } = require('./queries');
+const categoryService = require('./categoryService');
+const { GemSyncRun } = require('./syncRun.model');
+const logger = require('../../config/logger');
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -85,6 +89,10 @@ class LiveTenderController {
         search,
         q,
         category,
+        classification,
+        status: statusFilter,
+        publishedFrom,
+        publishedTo,
         location,
         state,
         department,
@@ -107,7 +115,11 @@ class LiveTenderController {
       // `search` and `q` are interchangeable; the main search box uses `search`
       // while `q` is supported as a short alias.
       const searchTerm = cleanText(search || q, 200);
-      const categoryValue = cleanText(category, 100).toLowerCase();
+      const categoryValue = cleanText(category, 160).toLowerCase();
+      const classificationValue = cleanText(classification, 20).toLowerCase();
+      const statusValue = cleanText(statusFilter, 20).toLowerCase();
+      const publishedFromDate = publishedFrom ? new Date(publishedFrom) : null;
+      const publishedToDate = publishedTo ? new Date(publishedTo) : null;
       const locationValue = cleanText(location, 100);
       const stateValue = cleanText(state, 100);
       const departmentValue = cleanText(department || organization, 100);
@@ -118,24 +130,9 @@ class LiveTenderController {
       const deadlineFromDate = deadlineFrom ? new Date(deadlineFrom) : null;
       const deadlineToDate = deadlineTo ? new Date(deadlineTo) : null;
 
-      // GeM-only, live-only base filter. The frontend has no way to request a
-      // different source portal.
-      const query = {
-        isActive: true,
-        status: { $in: ['published', 'open'] },
-        sourcePortal: SOURCE_PORTALS.GEM,
-      };
-
-      const andConditions = [
-        // Active-only: submission deadline not passed. Tenders without a
-        // deadline are kept visible to avoid hiding unparseable data.
-        {
-          $or: [
-            { submissionDeadline: { $gte: new Date() } },
-            { submissionDeadline: { $exists: false } },
-          ],
-        },
-      ];
+      // GeM-only, live-only base filter (shared with statistics and facets).
+      const { $or: deadlineOr, ...query } = liveTenderQuery(new Date());
+      const andConditions = [{ $or: deadlineOr }];
 
       if (searchTerm) {
         const searchRegex = escapeRegex(searchTerm);
@@ -146,7 +143,23 @@ class LiveTenderController {
         });
       }
 
-      if (categoryValue) query.category = categoryValue;
+      // Category = official GeM category key (see /categories). Legacy
+      // lowercase enum values still match the stored display name.
+      if (categoryValue) {
+        andConditions.push({
+          $or: [
+            { 'categoryInfo.key': categoryValue },
+            ...(categoryValue === 'unclassified' ? [{ 'categoryInfo.key': { $exists: false } }] : []),
+            { category: new RegExp(`^${escapeRegex(categoryValue)}$`, 'i') },
+          ],
+        });
+      }
+      if ([CLASSIFICATION.PRODUCT, CLASSIFICATION.SERVICE, CLASSIFICATION.UNCLASSIFIED].includes(classificationValue)) {
+        query['categoryInfo.classification'] = classificationValue === CLASSIFICATION.UNCLASSIFIED
+          ? { $in: [CLASSIFICATION.UNCLASSIFIED, null] }
+          : classificationValue;
+      }
+      if (['published', 'open'].includes(statusValue)) query.status = statusValue;
       if (locationValue) query.location = { $regex: escapeRegex(locationValue), $options: 'i' };
       if (stateValue) {
         const stateRegex = toFlexibleStateRegex(stateValue);
@@ -201,9 +214,16 @@ class LiveTenderController {
         andConditions.push({ submissionDeadline: { $lte: deadlineToDate } });
       }
 
+      if (publishedFromDate && !isNaN(publishedFromDate.getTime())) {
+        andConditions.push({ openingDate: { $gte: publishedFromDate } });
+      }
+      if (publishedToDate && !isNaN(publishedToDate.getTime())) {
+        andConditions.push({ openingDate: { $lte: publishedToDate } });
+      }
+
       query.$and = andConditions;
 
-      const sortField = sortBy === 'submissionDeadline' ? 'submissionDeadline' : 'createdAt';
+      const sortField = ['submissionDeadline', 'openingDate'].includes(sortBy) ? sortBy : 'createdAt';
       const sortValue = sortOrder === 'asc' ? 1 : -1;
 
       const [tenders, total] = await Promise.all([
@@ -214,6 +234,21 @@ class LiveTenderController {
           .lean(),
         LiveTender.countDocuments(query),
       ]);
+
+      // Diagnostics: always log empty results with the collection counts that
+      // explain them; log every query when LIVE_TENDERS_QUERY_LOG=true.
+      if (total === 0) {
+        const [gemTotal, gemLive] = await Promise.all([
+          LiveTender.countDocuments({ sourcePortal: SOURCE_PORTALS.GEM }),
+          LiveTender.countDocuments(liveTenderQuery(new Date())),
+        ]);
+        logger.warn('live-tenders: query returned 0 results', {
+          query: JSON.stringify(query), gemRecordsInDb: gemTotal, gemLiveRecordsInDb: gemLive,
+          filtersApplied: Object.keys(req.query).filter((k) => !['page', 'limit', 'sortBy', 'sortOrder'].includes(k)),
+        });
+      } else if (process.env.LIVE_TENDERS_QUERY_LOG === 'true') {
+        logger.info('live-tenders: query', { query: JSON.stringify(query), total, returned: tenders.length, page: safePage });
+      }
 
       res.status(200).json({
         success: true,
@@ -273,10 +308,8 @@ class LiveTenderController {
 
 async getStates(req, res) {
     try {
-      const matchStage = {
-        isActive: true,
-        sourcePortal: SOURCE_PORTALS.GEM,
-      };
+      const { $or: _deadline, ...liveBase } = liveTenderQuery(new Date());
+      const matchStage = { ...liveBase, $or: _deadline };
 
       const statesWithCounts = await LiveTender.aggregate([
         { $match: matchStage },
@@ -321,7 +354,7 @@ async getStates(req, res) {
 
   async getDepartments(req, res) {
     try {
-      const departments = await LiveTender.distinct('department', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
+      const departments = await LiveTender.distinct('department', { ...liveTenderQuery(new Date()) });
       
       res.status(200).json({
         success: true,
@@ -336,26 +369,82 @@ async getStates(req, res) {
     }
   }
 
+  /** Official GeM categories (with live counts) taken from stored GeM bids. */
   async getCategories(req, res) {
     try {
-      const categories = await LiveTender.distinct('category', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
-      
+      const categories = await categoryService.getCategoryFacets();
+      res.status(200).json({ success: true, data: categories });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Failed to fetch categories', errors: [error.message] });
+    }
+  }
+
+  /**
+   * One call for every filter dropdown + sync info. Every value is backed by
+   * live records; nothing is a static list.
+   */
+  async getFilters(req, res) {
+    try {
+      const now = new Date();
+      const live = liveTenderQuery(now);
+      const [categories, bidTypeRows, classRows, statusRows, stateRows, total, lastRun, lastSuccess, anyGem, range] = await Promise.all([
+        categoryService.getCategoryFacets(now),
+        LiveTender.aggregate([{ $match: live }, { $group: { _id: '$metadata.bidType', count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
+        LiveTender.aggregate([{ $match: live }, { $group: { _id: '$categoryInfo.classification', count: { $sum: 1 } } }]),
+        LiveTender.aggregate([{ $match: live }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+        LiveTender.aggregate([{ $match: live }, { $group: { _id: '$metadata.state', count: { $sum: 1 } } }, { $sort: { _id: 1 } }]),
+        LiveTender.countDocuments(live),
+        GemSyncRun.findOne({ type: 'tenders' }).sort({ startedAt: -1 }).select('status startedAt finishedAt error').lean(),
+        GemSyncRun.findOne({ type: 'tenders', status: 'success' }).sort({ startedAt: -1 }).select('finishedAt').lean(),
+        LiveTender.countDocuments({ sourcePortal: SOURCE_PORTALS.GEM }),
+        Promise.all([
+          LiveTender.findOne(live).sort({ submissionDeadline: 1 }).select('submissionDeadline').lean(),
+          LiveTender.findOne(live).sort({ submissionDeadline: -1 }).select('submissionDeadline').lean(),
+          LiveTender.findOne({ ...live, openingDate: { $exists: true } }).sort({ openingDate: 1 }).select('openingDate').lean(),
+          LiveTender.findOne({ ...live, openingDate: { $exists: true } }).sort({ openingDate: -1 }).select('openingDate').lean(),
+        ]),
+      ]);
+      const [minD, maxD, minP, maxP] = range;
+      const classCounts = {};
+      classRows.forEach((r) => { const k = r._id || 'unclassified'; classCounts[k] = (classCounts[k] || 0) + r.count; });
+
       res.status(200).json({
         success: true,
-        data: categories.sort(),
+        data: {
+          categories,
+          classifications: Object.entries(classCounts).map(([value, count]) => ({ value, count })),
+          bidTypes: bidTypeRows.filter((r) => r._id !== null && r._id !== undefined).map((r) => ({
+            value: r._id, label: BID_TYPE_LABELS[r._id] || `Bid type ${r._id}`, count: r.count,
+          })),
+          statuses: statusRows.map((r) => ({ value: r._id, count: r.count })),
+          states: stateRows.filter((r) => r._id && String(r._id).trim()).map((r) => ({ value: normalizeState(r._id), count: r.count })),
+          ranges: minD ? { minDeadline: minD.submissionDeadline, maxDeadline: maxD && maxD.submissionDeadline, minPublished: minP && minP.openingDate, maxPublished: maxP && maxP.openingDate } : null,
+          meta: {
+            totalLive: total,
+            totalGemRecords: anyGem,
+            hasImportedAny: anyGem > 0,
+            lastSync: lastRun ? { status: lastRun.status, startedAt: lastRun.startedAt, finishedAt: lastRun.finishedAt } : null,
+            lastSuccessfulSyncAt: lastSuccess ? lastSuccess.finishedAt : null,
+          },
+        },
       });
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch categories',
-        errors: [error.message],
-      });
+      res.status(500).json({ success: false, message: 'Failed to fetch filters', errors: [error.message] });
+    }
+  }
+
+  async syncCategories(req, res) {
+    try {
+      const result = await categoryService.syncCategories({ trigger: 'manual' });
+      res.status(200).json({ success: true, message: 'Category synchronization completed', data: result });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Category synchronization failed', errors: [error.message] });
     }
   }
 
   async getAuthorities(req, res) {
     try {
-      const authorities = await LiveTender.distinct('issuingOrganization', { isActive: true, sourcePortal: SOURCE_PORTALS.GEM });
+      const authorities = await LiveTender.distinct('issuingOrganization', liveTenderQuery(new Date()));
       
       res.status(200).json({
         success: true,
@@ -372,14 +461,17 @@ async getStates(req, res) {
 
   async getSyncStatus(req, res) {
     try {
-      const status = liveTenderSyncService.getSyncStatus();
+      const overview = await liveTenderSyncService.getSyncOverview();
       const statistics = await liveTenderSyncService.getStatistics();
 
       res.status(200).json({
         success: true,
         message: 'Sync status retrieved successfully',
         data: {
-          sync: status,
+          sync: overview.sync,
+          lastRun: overview.lastRun,
+          lastSuccessfulRun: overview.lastSuccessfulRun,
+          categorySync: overview.categorySync,
           statistics,
         },
       });
@@ -394,7 +486,7 @@ async getStates(req, res) {
 
   async manualSync(req, res) {
     try {
-      const result = await liveTenderSyncService.synchronizeTenders();
+      const result = await liveTenderSyncService.synchronizeTenders({ trigger: 'manual' });
 
       if (result.success) {
         res.status(200).json({

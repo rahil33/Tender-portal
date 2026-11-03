@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('../../../config/logger');
+const { normalizeGemDocument, REJECT } = require('./gemNormalizer');
 
 /**
  * GeMScraperService
@@ -103,29 +104,59 @@ function gemBidUrlPath(doc) {
   return `/${docLabel}/${bidId}`;
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const intEnv = (name, fallback) => {
+  const n = parseInt(process.env[name], 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
 class GeMScraperService {
   constructor() {
+    this.http = axios; // overridable in tests
+    this.sleep = sleep; // overridable in tests
     this.baseUrl = 'https://bidplus.gem.gov.in';
     this.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     this.timeout = 30000;
-    this.maxRetries = 3;
-    this.retryDelay = 2000;
+    this.maxRetries = intEnv('GEM_MAX_RETRIES', 3);
+    this.retryBaseDelayMs = intEnv('GEM_RETRY_BASE_DELAY_MS', 2000);
+    this.retryMaxDelayMs = 60000;
+    // Politeness: strictly sequential requests with a small pause between
+    // pages (never concurrent). Override with GEM_REQUEST_DELAY_MS.
+    this.requestDelayMs = intEnv('GEM_REQUEST_DELAY_MS', 150);
+    this.maxConsecutivePageFailures = intEnv('GEM_MAX_CONSECUTIVE_PAGE_FAILURES', 5);
     // GeM returns a fixed number of results per request regardless of any
     // requested page size. There is deliberately NO artificial page ceiling:
     // pagination continues until GeM's own reported result count is exhausted.
     this.pageSize = 10;
   }
 
-  async fetchWithRetry(fn, retryCount = 0) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (retryCount < this.maxRetries) {
-        logger.warn(`Retry ${retryCount + 1}/${this.maxRetries} for GeM request`, { error: error.message });
-        await new Promise((resolve) => setTimeout(resolve, this.retryDelay * (retryCount + 1)));
-        return this.fetchWithRetry(fn, retryCount + 1);
+  isRetryable(error) {
+    const status = error && error.response && error.response.status;
+    if (!status) return true; // network error / timeout / DNS
+    return status === 408 || status === 429 || status >= 500;
+  }
+
+  backoffDelay(attempt, error) {
+    const exp = Math.min(this.retryMaxDelayMs, this.retryBaseDelayMs * 2 ** attempt);
+    const jittered = exp * (0.8 + Math.random() * 0.4);
+    const retryAfter = Number(error && error.response && error.response.headers && error.response.headers['retry-after']);
+    const requested = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0;
+    return Math.min(this.retryMaxDelayMs, Math.max(jittered, requested));
+  }
+
+  /** Retries transient failures with exponential backoff + jitter (honours Retry-After). */
+  async fetchWithRetry(fn, label = 'GeM request') {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt >= this.maxRetries || !this.isRetryable(error)) throw error;
+        const delay = this.backoffDelay(attempt, error);
+        logger.warn(`Retry ${attempt + 1}/${this.maxRetries} for ${label} in ${Math.round(delay)}ms`, {
+          error: error.message, status: error.response && error.response.status,
+        });
+        await this.sleep(delay);
       }
-      throw error;
     }
   }
 
@@ -135,7 +166,7 @@ class GeMScraperService {
    */
   async getSession() {
     const response = await this.fetchWithRetry(() =>
-      axios.get(`${this.baseUrl}/all-bids`, {
+      this.http.get(`${this.baseUrl}/all-bids`, {
         timeout: this.timeout,
         maxRedirects: 5,
         headers: {
@@ -143,11 +174,12 @@ class GeMScraperService {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
         },
-      })
+      }),
+      'GeM session'
     );
 
     const html = response.data;
-    const tokenMatch = html.match(/id="chash"\s+value="([^"]+)"/);
+    const tokenMatch = typeof html === 'string' && html.match(/id="chash"\s+value="([^"]+)"/);
     if (!tokenMatch) {
       throw new Error('Unable to extract CSRF token from GeM portal');
     }
@@ -156,15 +188,10 @@ class GeMScraperService {
       .map((cookie) => cookie.split(';')[0])
       .join('; ');
 
-    return {
-      csrfToken: tokenMatch[1],
-      cookies,
-    };
+    return { csrfToken: tokenMatch[1], cookies };
   }
 
-  /**
-   * Fetches one page of ongoing bids from the GeM JSON endpoint.
-   */
+  /** Fetches one page of ongoing bids from the GeM JSON endpoint. */
   async fetchPage(session, page) {
     const payload = {
       param: { searchBid: '', searchType: 'fullText' },
@@ -184,7 +211,7 @@ class GeMScraperService {
     }).toString();
 
     const response = await this.fetchWithRetry(() =>
-      axios.post(`${this.baseUrl}/all-bids-data`, body, {
+      this.http.post(`${this.baseUrl}/all-bids-data`, body, {
         timeout: this.timeout,
         maxRedirects: 5,
         headers: {
@@ -196,267 +223,172 @@ class GeMScraperService {
           'Referer': `${this.baseUrl}/all-bids`,
           'Cookie': session.cookies,
         },
-      })
+      }),
+      `GeM page ${page}`
     );
 
     const data = response.data;
     const solr = data && data.response && data.response.response;
     if (!data || data.code !== 200 || !solr) {
-      throw new Error('Unexpected response from GeM bid listing endpoint');
+      const err = new Error('Unexpected response from GeM bid listing endpoint');
+      err.unexpectedResponse = true; // usually an expired CSRF token / session
+      throw err;
     }
-
     return solr;
   }
 
   /**
-   * Fetches the complete set of ongoing bids from GeM.
+   * Crawls every page of ongoing GeM bids, sequentially, and hands each page's
+   * validated tenders to `onPage` so the caller can persist them incrementally
+   * (nothing waits for the entire crawl to finish).
    *
-   * Pagination is driven entirely by the result metadata GeM returns:
-   *   1. Read GeM's reported total (`numFound`).
-   *   2. Calculate the required number of pages.
-   *   3. Process pages sequentially until the ACTUAL FINAL PAGE.
-   *   4. Stop only when the complete result set has been processed.
+   * Recovery behaviour:
+   *  - a page that still fails after retries is recorded and SKIPPED; the crawl
+   *    continues (it is then reported as incomplete, so callers never
+   *    reconcile/archive on it);
+   *  - an unexpected response triggers one session (CSRF) refresh;
+   *  - after N consecutive page failures the crawl aborts;
+   *  - if `onPage` throws an error flagged `abortCrawl`, the crawl stops.
    *
-   * There is no arbitrary `GEM_MAX_PAGES` ceiling. If any page request fails
-   * after retries, the crawl is treated as a critical failure and the error is
-   * propagated so callers do NOT reconcile/expire data on a partial crawl.
+   * No CAPTCHA/authentication/access control is bypassed: a refusal simply
+   * ends up as a failed page.
    *
-   * @returns {Promise<{
-   *   tenders: Array<object>,
-   *   numFound: number,
-   *   pagesProcessed: number,
-   *   pagesExpected: number,
-   *   reachedFinalPage: boolean,
-   * }>}
+   * @param {object} [opts]
+   * @param {(info: {page:number, tenders:object[], extracted:number, rejected:number}) => Promise<void>} [opts.onPage]
    */
-  async fetchActiveTenders() {
-    const session = await this.getSession();
-    const tenders = [];
-    let numFound = 0;
+  async crawl({ onPage } = {}) {
+    const report = {
+      numFound: 0,
+      pagesDiscovered: 0,
+      pagesProcessed: 0,
+      pagesFailed: 0,
+      failedPages: [],
+      extracted: 0,
+      validated: 0,
+      rejected: 0,
+      rejectionReasons: {},
+      reachedFinalPage: false,
+      aborted: false,
+      abortReason: null,
+    };
+
+    let session = await this.getSession();
     let page = 1;
-    let reachedFinalPage = false;
-    let pagesProcessed = 0;
+    let totalPages = 0;
+    let consecutiveFailures = 0;
+    let refreshedForThisFailureStreak = false;
 
+    // eslint-disable-next-line no-constant-condition
     while (true) {
-      const solr = await this.fetchPage(session, page);
-      pagesProcessed++;
-      numFound = solr.numFound || 0;
+      let solr;
+      try {
+        solr = await this.fetchPage(session, page);
+        if (!solr.docs || solr.docs.length === 0) {
+          const empty = new Error('GeM returned an empty page before the reported final page');
+          empty.emptyPage = (solr.numFound || 0) > 0 && page <= Math.ceil((solr.numFound || 0) / this.pageSize);
+          if (empty.emptyPage) throw empty;
+        }
+      } catch (error) {
+        consecutiveFailures += 1;
+        report.pagesFailed += 1;
+        report.failedPages.push({ page, error: error.message });
+        logger.error(`GeM page ${page} failed: ${error.message}`, { page, status: error.response && error.response.status });
 
-      const totalPages = Math.ceil(numFound / this.pageSize);
-
-      if (totalPages <= 0) {
-        // No results reported by GeM - nothing to process.
-        break;
+        if (consecutiveFailures >= this.maxConsecutivePageFailures) {
+          report.aborted = true;
+          report.abortReason = `${consecutiveFailures} consecutive page failures (last: ${error.message})`;
+          break;
+        }
+        if (error.unexpectedResponse && !refreshedForThisFailureStreak) {
+          refreshedForThisFailureStreak = true;
+          try { session = await this.getSession(); logger.info('GeM session refreshed'); } catch (refreshError) {
+            logger.error(`GeM session refresh failed: ${refreshError.message}`);
+          }
+        }
+        if (totalPages && page >= totalPages) break; // failed on the last page: nothing further to try
+        page += 1;
+        await this.sleep(this.requestDelayMs);
+        continue;
       }
 
-      if (!solr.docs || solr.docs.length === 0) {
-        // GeM returned a page with no documents before the reported final
-        // page. This is an incomplete/partial response - do NOT treat the
-        // crawl as a full reconciliation.
-        logger.warn(
-          `GeM returned an empty docs array on page ${page} of ${totalPages} (numFound=${numFound}) - crawl is partial`,
-          { pagesProcessed, numFound, totalPages }
-        );
-        reachedFinalPage = false;
-        break;
-      }
+      consecutiveFailures = 0;
+      refreshedForThisFailureStreak = false;
+      report.pagesProcessed += 1;
+      report.numFound = solr.numFound || 0;
+      totalPages = Math.ceil(report.numFound / this.pageSize);
+      report.pagesDiscovered = totalPages;
 
-      for (const doc of solr.docs) {
-        const tender = this.mapTender(doc);
-        if (tender) {
-          tenders.push(tender);
+      if (totalPages <= 0) { report.reachedFinalPage = true; break; }
+
+      const tenders = [];
+      let rejectedOnPage = 0;
+      for (const doc of solr.docs || []) {
+        report.extracted += 1;
+        const result = normalizeGemDocument(doc);
+        if (result.tender) {
+          tenders.push(result.tender);
+          report.validated += 1;
+        } else {
+          rejectedOnPage += 1;
+          report.rejected += 1;
+          const reason = result.reject.reason;
+          report.rejectionReasons[reason] = (report.rejectionReasons[reason] || 0) + 1;
+          logger.debug(`GeM record rejected on page ${page}: ${reason}`, { page, bidNumber: result.reject.bidNumber, gemBidId: result.reject.gemBidId });
         }
       }
 
-      if (page >= totalPages) {
-        reachedFinalPage = true;
-        break;
+      if (onPage) {
+        try {
+          await onPage({ page, tenders, extracted: (solr.docs || []).length, rejected: rejectedOnPage });
+        } catch (error) {
+          if (error && error.abortCrawl) {
+            report.aborted = true;
+            report.abortReason = error.message;
+            break;
+          }
+          throw error;
+        }
       }
 
-      if (page % 200 === 0) {
-        logger.info(`GeM crawl progress: ${page}/${totalPages} pages processed (${tenders.length} tenders mapped)`);
+      if (page % 100 === 0) {
+        logger.info(
+          `GeM crawl: page ${page}/${totalPages} | extracted ${report.extracted} | validated ${report.validated} | rejected ${report.rejected} | failed pages ${report.pagesFailed}`
+        );
       }
 
-      page++;
+      if (page >= totalPages) { report.reachedFinalPage = true; break; }
+      page += 1;
+      await this.sleep(this.requestDelayMs);
     }
 
-    logger.info(
-      `Fetched ${tenders.length} tenders from GeM (${numFound} ongoing on portal; pages ${pagesProcessed}/${Math.ceil(numFound / this.pageSize) || 0}; final page reached: ${reachedFinalPage})`
-    );
-
-    return {
-      tenders,
-      numFound,
-      pagesProcessed,
-      pagesExpected: Math.ceil(numFound / this.pageSize),
-      reachedFinalPage,
-    };
+    return report;
   }
 
   /**
-   * Maps a raw GeM Solr document to our LiveTender schema.
+   * Backwards compatible helper: crawl everything and return the tenders in
+   * memory. Production sync uses crawl() with incremental persistence instead.
    */
-  mapTender(doc) {
-    const first = (key) => {
-      const value = doc[key];
-      if (Array.isArray(value)) return value[0];
-      return value;
-    };
-
-    const bidId = String(first('b_id') || '');
-    const bidNumber = first('b_bid_number');
-    const categoryName = first('b_category_name');
-    const bidDetailCategories = first('bd_category_name');
-    const boqTitle = first('bbt_title');
-    const ministry = first('ba_official_details_minName');
-    const department = first('ba_official_details_deptName');
-    const quantity = first('b_total_quantity');
-    const startDate = first('final_start_date_sort');
-    const endDate = first('final_end_date_sort');
-    const inactiveFlag = Number(first('b_is_inactive')) || 0;
-
-    if (!bidId || !bidNumber || !endDate) {
-      return null;
-    }
-
-    // GeM marks bids as inactive when they are no longer acceptive. Never
-    // ingest those into the live feed.
-    if (inactiveFlag === 1) {
-      logger.debug(`GeM bid ${bidNumber} skipped (b_is_inactive=1)`, { gemBidId: bidId });
-      return null;
-    }
-
-    const title = boqTitle || categoryName || bidNumber;
-    const category = this.detectCategory(`${categoryName || ''} ${bidDetailCategories || ''} ${title || ''}`);
-
-    // GeM may expose a delivery/city/state location field on some bids. Only
-    // use it when actually present; never invent a location. Falls back to
-    // generic "India" so records always have a location value.
-    const gemState = first('b_delivery_state') || first('ba_state_name');
-    const gemCity = first('b_delivery_city') || first('ba_city_name');
-    const metaState = typeof gemState === 'string' && gemState.trim() ? gemState.trim() : undefined;
-    const metaCity = typeof gemCity === 'string' && gemCity.trim() ? gemCity.trim() : undefined;
-
-    // Bid value: range/RA bids may expose an estimated/cleared value. Only set
-    // when a positive numeric field is present; otherwise the value stays
-    // unknown and the value filter simply does not match.
-    const rawValue = first('b_bid_value') ?? first('b_reserve_price') ?? first('b_estimated_value');
-    let estimatedValue;
-    const parsedValue = typeof rawValue === 'string' ? parseFloat(rawValue.replace(/[^0-9.]/g, '')) : parseFloat(rawValue);
-    if (Number.isFinite(parsedValue) && parsedValue > 0) {
-      estimatedValue = parsedValue;
-    }
-
-    const bidUrlPath = gemBidUrlPath(doc);
-    const officialUrl = normalizeGemTenderUrl(bidUrlPath);
-
-    if (!officialUrl) {
-      logger.warn(`GeM tender skipped: unable to resolve official URL for bid ${bidNumber}`, { gemBidId: bidId });
-      return null;
-    }
-
-    const description = [
-      categoryName ? `Items: ${categoryName}` : null,
-      quantity ? `Total quantity: ${quantity}` : null,
-      ministry ? `Ministry: ${ministry}` : null,
-      department ? `Department: ${department}` : null,
-    ].filter(Boolean).join('. ') || `GeM tender ${bidNumber}`;
-
-    // Extract the bid download / catalogue URL from GeM data.
-    //
-    // GeM does not expose a per-bid document token in the listing payload we
-    // consume, but the official bid document page path (showbidDocument / RA
-    // schedule variants) is what the GeM listing itself links to and it loads
-    // the real bid catalogue/document. We derive bidDownloadUrl from that
-    // verifiedGeM path only. If GeM later exposes an explicit showCatalogue
-    // token field, it can be preferred here -- but we never fabricate a token,
-    // so when no reliable catalogue URL exists bidDownloadUrl stays undefined
-    // and the UI falls back to "Bid document unavailable".
-    let bidDownloadUrl = undefined;
-    const explicitCatalogue = first('b_catalogue_url');
-    if (explicitCatalogue && typeof explicitCatalogue === 'string' && explicitCatalogue.trim()) {
-      const normalized = normalizeGemTenderUrl(explicitCatalogue.trim());
-      if (normalized) {
-        bidDownloadUrl = normalized;
-      }
-    }
-    if (!bidDownloadUrl) {
-      bidDownloadUrl = officialUrl;
-    }
-
+  async fetchActiveTenders() {
+    const tenders = [];
+    const report = await this.crawl({ onPage: async ({ tenders: pageTenders }) => { tenders.push(...pageTenders); } });
     return {
-      tenderNumber: bidNumber,
-      title,
-      description,
-      category,
-      status: 'open',
-      issuingOrganization: ministry || department || 'Government of India',
-      department: department || '',
-      location: metaState || 'India',
-      tenderType: 'government',
-      budget: estimatedValue ? { estimated: estimatedValue, currency: 'INR', budgetType: 'fixed' } : {},
-      submissionDeadline: new Date(endDate),
-      openingDate: startDate ? new Date(startDate) : undefined,
-      originalUrl: officialUrl,
-      sourcePortal: 'GEM',
-      metadata: {
-        source: 'GEM',
-        gemBidId: bidId,
-        ministry: ministry || '',
-        state: metaState,
-        city: metaCity,
-        corrigendumCount: 0,
-        boqUrl: boqTitle ? officialUrl : undefined,
-        tenderPdfUrl: officialUrl,
-        bidType: Number(first('b_bid_type')) || 1,
-        isHighValue: !!doc.is_high_value,
-        isRateContract: Number(first('is_rc_bid')) === 1,
-        isGlobalTendering: Number(first('ba_is_global_tendering')) === 1,
-        bidDownloadUrl: bidDownloadUrl,
-      },
-      documents: [{
-        documentName: 'GeM Bid Document',
-        documentUrl: officialUrl,
-        documentType: 'tender_document',
-        name: 'GeM Bid Document',
-        url: officialUrl,
-        type: 'tender_document',
-        source: 'GEM',
-      }],
-      contactInfo: {
-        organisation: ministry || department || '',
-        department: department || '',
-        officer: '',
-        email: '',
-        phone: '',
-        address: `${ministry || ''} ${department || ''}`.trim(),
-      },
-      tags: this.generateTags(category, ministry, department),
+      tenders,
+      numFound: report.numFound,
+      pagesProcessed: report.pagesProcessed,
+      pagesExpected: report.pagesDiscovered,
+      reachedFinalPage: report.reachedFinalPage && report.pagesFailed === 0 && !report.aborted,
+      report,
     };
   }
 
-  detectCategory(text) {
-    const value = (text || '').toLowerCase();
-    if (/(construction|civil|building|infrastructure|road |bridge|pipeline|drainage)/.test(value)) return 'construction';
-    if (/(laptop|computer|software|hardware|server|it hardware|networking|cyber|monitor|printer)/.test(value)) return 'it_software';
-    if (/(medical|health|hospital|pharma|medicine|surgical|diagnostic|vaccine|clinical)/.test(value)) return 'medical';
-    if (/(transport|vehicle|bus |truck|car |automobile|aviation|railway|tyre|marine)/.test(value)) return 'transportation';
-    if (/(agriculture|farm|tractor|seed|fertilizer|food grain|crop)/.test(value)) return 'agriculture';
-    if (/(education|school|university|college|training|book |stationery)/.test(value)) return 'education';
-    if (/(consult|advisory|professional service)/.test(value)) return 'consultancy';
-    if (/(works|maintenance|repair|installation|erection|service|amc)/.test(value)) return 'services';
-    return 'goods';
-  }
-
-  generateTags(category, ministry, department) {
-    const tags = new Set();
-    if (category) tags.add(category.toLowerCase());
-    if (ministry) tags.add(ministry.toLowerCase());
-    if (department) tags.add(department.toLowerCase());
-    tags.add('gem');
-    return Array.from(tags);
+  /** Maps one raw GeM document; returns null when it is rejected (see normalizer). */
+  mapTender(doc) {
+    const result = normalizeGemDocument(doc);
+    return result.tender || null;
   }
 }
 
 module.exports = new GeMScraperService();
 module.exports.normalizeGemTenderUrl = normalizeGemTenderUrl;
+module.exports.isOfficialGemUrl = isOfficialGemUrl;
+module.exports.REJECT = REJECT;

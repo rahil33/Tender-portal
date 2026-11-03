@@ -1,8 +1,27 @@
+const mongoose = require('mongoose');
 const { LiveTender } = require('./model');
-const { SOURCE_PORTALS } = require('./constants');
+const { GemSyncRun } = require('./syncRun.model');
+const { SOURCE_PORTALS, ARCHIVE_REASON } = require('./constants');
+const { liveTenderQuery } = require('./queries');
+const { buildUpsertOperation } = require('./services/upsertBuilder');
 const gemScraperService = require('./services/gemScraper.service');
 const logger = require('../../config/logger');
-const mongoose = require('mongoose');
+
+const FLUSH_SIZE = 500;
+const MAX_CONSECUTIVE_FLUSH_FAILURES = 3;
+const MIN_COVERAGE_FOR_RECONCILIATION = 0.9;
+
+const freshCounters = () => ({
+  tendersExtracted: 0,
+  tendersValidated: 0,
+  tendersRejected: 0,
+  duplicatesSkipped: 0,
+  tendersInserted: 0,
+  tendersUpdated: 0,
+  tendersUnchanged: 0,
+  tendersArchived: 0,
+  dbWriteFailures: 0,
+});
 
 class LiveTenderSyncService {
   constructor() {
@@ -10,12 +29,15 @@ class LiveTenderSyncService {
       lastSyncAt: null,
       lastSyncStatus: null,
       isSyncing: false,
-      // GeM crawl metrics
+      lastRunId: null,
       gemReportedTotal: 0,
+      pagesDiscovered: 0,
       pagesProcessed: 0,
       pagesExpected: 0,
+      pagesFailed: 0,
       reachedFinalPage: false,
-      // Document-level write metrics
+      ...freshCounters(),
+      // legacy field names (kept for existing consumers / dashboard)
       totalSynced: 0,
       totalUpdated: 0,
       totalInserted: 0,
@@ -23,8 +45,9 @@ class LiveTenderSyncService {
       totalFailed: 0,
       totalExpired: 0,
       totalRemoved: 0,
+      verifiedPersisted: 0,
+      rejectionReasons: {},
       syncDuration: 0,
-      // The last sync that completed a FULL crawl (final GeM page reached).
       lastSuccessfulFullSyncAt: null,
       lastError: null,
     };
@@ -34,518 +57,427 @@ class LiveTenderSyncService {
     if (mongoose.connection.readyState !== 1) {
       logger.info('Waiting for MongoDB connection...');
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('MongoDB connection timeout'));
-        }, 15000);
-        
-        mongoose.connection.once('connected', () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-        
-        mongoose.connection.once('error', (err) => {
-          clearTimeout(timeout);
-          reject(err);
-        });
+        const timeout = setTimeout(() => reject(new Error('MongoDB connection timeout')), 15000);
+        mongoose.connection.once('connected', () => { clearTimeout(timeout); resolve(); });
+        mongoose.connection.once('error', (err) => { clearTimeout(timeout); reject(err); });
       });
     }
-
     await this.alignIndexes();
     return true;
   }
 
   /**
-   * Aligns the LiveTender collection indexes with the current schema.
-   *
-   * A previous schema version defined a legacy unique index (metadata.cpppId_1)
-   * in existing databases. Because GeM tenders do not store a cpppId (null),
-   * that unique index allows only one GeM record to be inserted and makes every
-   * subsequent GeM insert fail with an E11000 duplicate-key error. This drops
-   * the legacy unique index so GeM tenders can be synchronized; Mongoose
-   * recreates only the indexes defined by the current schema.
+   * A previous schema defined a legacy unique index (metadata.cpppId_1). Because
+   * GeM tenders have no cpppId (null) it allows only ONE GeM record and makes
+   * every other insert fail with E11000. Drop it, then make sure the current
+   * schema indexes exist.
    */
   async alignIndexes() {
     try {
-      if (mongoose.connection.readyState !== 1) {
-        return;
-      }
-      const collection = LiveTender.collection;
-      const indexes = await collection.indexes();
+      if (mongoose.connection.readyState !== 1) return;
+      const indexes = await LiveTender.collection.indexes().catch(() => []);
       const legacy = indexes.find((idx) => idx.name === 'metadata.cpppId_1' && idx.unique);
       if (legacy) {
         logger.warn('Dropping legacy unique index metadata.cpppId_1 (blocks GeM sync)');
-        await collection.dropIndex('metadata.cpppId_1');
-        await LiveTender.init();
-        logger.info('Legacy unique index metadata.cpppId_1 dropped; schema indexes aligned');
+        await LiveTender.collection.dropIndex('metadata.cpppId_1');
       }
+      await LiveTender.init();
     } catch (error) {
       logger.error('Failed to align LiveTender indexes', { error: error.message });
     }
   }
 
-  async synchronizeTenders() {
-    if (this.syncStats.isSyncing) {
-      logger.warn('Sync already in progress, skipping...');
-      return { success: false, message: 'Sync already in progress' };
-    }
+  // ─── persistence ────────────────────────────────────────────────────────────
+  /**
+   * Executes a bulkWrite and returns what MongoDB ACTUALLY did.
+   *
+   * With `ordered:false` Mongoose does not throw for documents that fail its own
+   * casting/validation: it drops them and reports them in
+   * `result.mongoose.validationErrors`. The previous code never looked there, so
+   * a schema error produced "0 inserted, 0 failed" and a successful-looking
+   * sync that wrote nothing. Every outcome is accounted for here.
+   *
+   * @returns {{inserted:number, updated:number, matchedUnchanged:number, failed:number, errors:string[]}}
+   */
+  async executeBulk(ops, tenders) {
+    if (ops.length === 0) return { inserted: 0, updated: 0, matchedUnchanged: 0, failed: 0, errors: [] };
 
-    const startTime = Date.now();
-    this.syncStats.isSyncing = true;
-    this.syncStats.lastSyncStatus = 'in_progress';
-
+    let result;
+    let thrown = null;
     try {
-      await this.waitForConnection();
-
-      logger.info('Starting GeM tender synchronization...');
-
-      const result = await gemScraperService.fetchActiveTenders();
-      const tenders = Array.isArray(result) ? result : (result.tenders || []);
-      const numFound = result.numFound || 0;
-      const pagesProcessed = result.pagesProcessed || 0;
-      const pagesExpected = result.pagesExpected || 0;
-      const reachedFinalPage = result.reachedFinalPage === true;
-
-      if (tenders.length === 0) {
-        logger.warn('No GeM tenders fetched, keeping existing data');
-        this.syncStats = {
-          ...this.syncStats,
-          lastSyncAt: new Date(),
-          lastSyncStatus: 'success',
-          totalSynced: 0,
-          gemReportedTotal: numFound,
-          pagesProcessed,
-          pagesExpected,
-          reachedFinalPage,
-          syncDuration: Date.now() - startTime,
-          isSyncing: false,
-        };
-        return {
-          success: true,
-          message: 'No new GeM tenders available, serving existing cached data',
-          stats: this.syncStats,
-        };
-      }
-
-      logger.info(`Processing ${tenders.length} GeM tenders...`);
-
-      const { inserted, updated, skipped, failed } = await this.bulkUpsertTenders(tenders);
-
-      // Mark tenders whose GeM bid end date has passed as closed + inactive so
-      // they never reappear in Live Tenders / search / filters.
-      const expired = await this.markExpiredTenders();
-
-      // Reconciliation safety: only reconcile tenders missing from GeM as
-      // removed/inactive when the FULL crawl completed (final page reached).
-      // On a partial/failed crawl we keep existing records untouched so the
-      // live feed is never wiped by an incomplete fetch.
-      let removed = 0;
-      if (reachedFinalPage) {
-        removed = await this.markRemovedTenders(tenders);
-      } else {
-        logger.warn(
-          'GeM crawl did not reach the final page - skipping removed/cancelled reconciliation to protect live data'
-        );
-      }
-
-      const duration = Date.now() - startTime;
-
-      const successfulFullSync = reachedFinalPage && failed === 0;
-      this.syncStats = {
-        ...this.syncStats,
-        lastSyncAt: new Date(),
-        lastSyncStatus: successfulFullSync ? 'success' : 'partial',
-        gemReportedTotal: numFound,
-        pagesProcessed,
-        pagesExpected,
-        reachedFinalPage,
-        totalSynced: inserted + updated,
-        totalInserted: inserted,
-        totalUpdated: updated,
-        totalSkipped: skipped,
-        totalFailed: failed,
-        totalExpired: expired,
-        totalRemoved: removed,
-        syncDuration: duration,
-        lastSuccessfulFullSyncAt: successfulFullSync ? new Date() : this.syncStats.lastSuccessfulFullSyncAt,
-        isSyncing: false,
-      };
-
-      logger.info('GeM tender synchronization completed', {
-        fetched: tenders.length,
-        inserted,
-        updated,
-        skipped,
-        expired,
-        removed,
-        failed,
-        duration,
-        reachedFinalPage,
-      });
-
-      return {
-        success: true,
-        message: successfulFullSync
-          ? 'Synchronization completed successfully'
-          : 'Synchronization completed with warnings (partial crawl)',
-        stats: this.syncStats,
-      };
+      result = await LiveTender.bulkWrite(ops, { ordered: false });
     } catch (error) {
-      const duration = Date.now() - startTime;
-
-      this.syncStats = {
-        ...this.syncStats,
-        lastSyncAt: new Date(),
-        lastSyncStatus: 'failed',
-        lastError: error.message,
-        syncDuration: duration,
-        isSyncing: false,
-      };
-
-      logger.error('Tender synchronization failed', { error: error.message });
-
-      return {
-        success: false,
-        message: `Synchronization failed: ${error.message}`,
-        stats: this.syncStats,
-      };
+      thrown = error;
+      result = error.result || {};
     }
+
+    const inserted = result.upsertedCount || 0;
+    const modified = result.modifiedCount || 0;
+    const matched = result.matchedCount || 0;
+    const errors = [];
+
+    const validationErrors = (result.mongoose && result.mongoose.validationErrors) || [];
+    validationErrors.forEach((e) => errors.push(`validation: ${String(e && e.message).slice(0, 200)}`));
+
+    let writeErrors = [];
+    if (thrown && thrown.writeErrors) writeErrors = Array.isArray(thrown.writeErrors) ? thrown.writeErrors : [thrown.writeErrors];
+    else if (Array.isArray(result.writeErrors)) writeErrors = result.writeErrors;
+    writeErrors.forEach((we) => {
+      const t = tenders[we.index] || {};
+      errors.push(`write error ${we.code} on ${t.tenderNumber || `#${we.index}`}: ${String(we.errmsg || we.message).slice(0, 200)}`);
+    });
+    if (thrown && !writeErrors.length) errors.push(`bulk write failed: ${String(thrown.message).slice(0, 200)}`);
+
+    const failedKnown = validationErrors.length + writeErrors.length;
+    const accounted = inserted + matched + failedKnown;
+    const unaccounted = Math.max(0, ops.length - accounted);
+    if (unaccounted > 0) errors.push(`${unaccounted} write(s) neither succeeded nor reported an error`);
+    const failed = failedKnown + unaccounted;
+
+    if (errors.length) {
+      logger.error(`GeM bulk write problems (${failed}/${ops.length} failed)`, { sample: errors.slice(0, 3) });
+    }
+    return { inserted, updated: modified, matchedUnchanged: Math.max(0, matched - modified), failed, errors };
   }
 
   /**
-   * Bulk upserts the mapped GeM tenders in chunks.
+   * Persists one batch of validated tenders and returns real write results.
+   * New bids are inserted, changed bids updated, identical bids only get their
+   * `lastSeenAt` refreshed, repeats within one crawl are skipped.
    *
-   * Matching is performed on metadata.gemBidId (falling back to tenderNumber)
-   * so repeated syncs update existing records and a single batch can never
-   * create duplicates. Writes are processed unordered so an isolated failure
-   * does not block the remaining tenders; failed records are counted and
-   * logged instead of being silently dropped.
-   *
-   * @param {Array<object>} tenders Mapped GeM tender payloads.
-   * @returns {Promise<{ inserted: number, updated: number, skipped: number, failed: number }>}
+   * @param {object[]} tenders  output of the normalizer
+   * @param {object}   run      { seen:Set, counters, errorSamples:[] }
    */
-  async bulkUpsertTenders(tenders) {
-    const chunkSize = 500;
-    let inserted = 0;
-    let updated = 0;
-    let failed = 0;
+  async persistBatch(tenders, run, now = new Date()) {
+    const batch = { attempted: 0, failed: 0 };
+    const unique = [];
+    for (const t of tenders) {
+      if (run.seen.has(t.tenderNumber)) { run.counters.duplicatesSkipped += 1; continue; }
+      run.seen.add(t.tenderNumber);
+      unique.push(t);
+    }
+    if (unique.length === 0) return batch;
 
-    for (let i = 0; i < tenders.length; i += chunkSize) {
-      const chunk = tenders.slice(i, i + chunkSize);
-      const operations = chunk.map((tenderData) => {
-        const sourcePortal = tenderData.sourcePortal || SOURCE_PORTALS.GEM;
-        const filter = tenderData.metadata?.gemBidId
-          ? { 'metadata.gemBidId': tenderData.metadata.gemBidId }
-          : { tenderNumber: tenderData.tenderNumber };
+    const existing = await LiveTender.find({ tenderNumber: { $in: unique.map((t) => t.tenderNumber) } })
+      .select('tenderNumber contentHash isActive isArchived status')
+      .lean();
+    const byNumber = new Map(existing.map((e) => [e.tenderNumber, e]));
 
-        const set = {
-          tenderNumber: tenderData.tenderNumber,
-          title: tenderData.title,
-          description: tenderData.description || 'No description available',
-          category: tenderData.category || 'goods',
-          status: 'published',
-          visibility: 'public',
-          budget: tenderData.budget || {},
-          submissionDeadline: tenderData.submissionDeadline,
-          openingDate: tenderData.openingDate || undefined,
-          issuingOrganization: tenderData.issuingOrganization,
-          location: tenderData.location || 'India',
-          department: tenderData.department || '',
-          tenderType: 'government',
-          tags: this.generateTags(tenderData),
-          metadata: {
-            source: tenderData.metadata?.source || sourcePortal,
-            originalUrl: tenderData.originalUrl,
-            gemBidId: tenderData.metadata?.gemBidId,
-            ministry: tenderData.metadata?.ministry,
-            state: tenderData.metadata?.state,
-            city: tenderData.metadata?.city,
-            corrigendumCount: 0,
-            boqUrl: tenderData.metadata?.boqUrl,
-            corrigendumUrl: tenderData.metadata?.corrigendumUrl,
-            tenderPdfUrl: tenderData.metadata?.tenderPdfUrl,
-            productCategory: tenderData.metadata?.productCategory,
-            bidType: tenderData.metadata?.bidType,
-            isHighValue: tenderData.metadata?.isHighValue,
-            isRateContract: tenderData.metadata?.isRateContract,
-            isGlobalTendering: tenderData.metadata?.isGlobalTendering,
-            bidDownloadUrl: tenderData.metadata?.bidDownloadUrl,
-          },
-          documents: tenderData.documents || [],
-          contactInfo: tenderData.contactInfo || {},
-          sourcePortal,
-          lastSyncedAt: new Date(),
-          isActive: true,
-        };
-
-        return {
-          updateOne: {
-            filter,
-            update: { $set: set, $setOnInsert: { status: 'published', visibility: 'public', tenderType: 'government' } },
-            upsert: true,
-          },
-        };
-      });
-
-      try {
-        const bulkResult = await LiveTender.bulkWrite(operations, { ordered: false });
-        inserted += (bulkResult.upsertedCount || 0) + (bulkResult.insertedCount || 0);
-        updated += bulkResult.modifiedCount || 0;
-        if (bulkResult.writeErrors && bulkResult.writeErrors.length) {
-          failed += bulkResult.writeErrors.length;
-          for (const writeError of bulkResult.writeErrors) {
-            logger.error(
-              `Failed to sync GeM tender (bulk write error)`,
-              {
-                index: writeError.index,
-                gemBidId: chunk[writeError.index]?.metadata?.gemBidId,
-                error: writeError.errmsg,
-                code: writeError.code,
-              }
-            );
-          }
-        }
-      } catch (error) {
-        failed += chunk.length;
-        logger.error('GeM tender bulk upsert failed', {
-          chunkStart: i,
-          error: error.message,
-          code: error.code,
-          keyPattern: error.keyPattern,
-          keyValue: error.keyValue,
-        });
-      }
+    const toWrite = [];
+    const unchanged = [];
+    for (const t of unique) {
+      const e = byNumber.get(t.tenderNumber);
+      const needsWrite = !e || e.contentHash !== t.contentHash || e.isActive !== true || e.isArchived === true || !['published', 'open'].includes(e.status);
+      (needsWrite ? toWrite : unchanged).push(t);
     }
 
-    logger.info(`Bulk upsert complete: ${inserted} inserted, ${updated} updated, ${failed} failed`);
-    return { inserted, updated, skipped: 0, failed };
-  }
-
-  async upsertTender(tenderData) {
-    const sourcePortal = tenderData.sourcePortal || SOURCE_PORTALS.GEM;
-
-    const existingTender = await LiveTender.findOne({
-      $or: [
-        { tenderNumber: tenderData.tenderNumber },
-        ...(tenderData.metadata?.gemBidId ? [{ 'metadata.gemBidId': tenderData.metadata.gemBidId }] : []),
-      ],
+    const ops = toWrite.map((t) => {
+      const { filter, update } = buildUpsertOperation(t, now);
+      return { updateOne: { filter, update, upsert: true } };
     });
 
-    if (existingTender) {
-      const updates = {
-        title: tenderData.title,
-        description: tenderData.description,
-        category: tenderData.category,
-        budget: tenderData.budget,
-        submissionDeadline: tenderData.submissionDeadline,
-        openingDate: tenderData.openingDate,
-        location: tenderData.location,
-        department: tenderData.department,
-        issuingOrganization: tenderData.issuingOrganization,
-        documents: tenderData.documents,
-        contactInfo: tenderData.contactInfo,
-        sourcePortal,
-        metadata: {
-          ...existingTender.metadata,
-          source: tenderData.metadata?.source || sourcePortal,
-          originalUrl: tenderData.originalUrl,
-          gemBidId: tenderData.metadata?.gemBidId || existingTender.metadata.gemBidId,
-          ministry: tenderData.metadata?.ministry || existingTender.metadata.ministry,
-          state: tenderData.metadata?.state || existingTender.metadata.state,
-          city: tenderData.metadata?.city || existingTender.metadata.city,
-          tenderPdfUrl: tenderData.metadata?.tenderPdfUrl || existingTender.metadata.tenderPdfUrl,
-          corrigendumCount: tenderData.metadata?.corrigendumCount || existingTender.metadata.corrigendumCount,
-          productCategory: tenderData.metadata?.productCategory || existingTender.metadata.productCategory,
-          bidType: tenderData.metadata?.bidType || existingTender.metadata.bidType,
-          isHighValue: tenderData.metadata?.isHighValue || existingTender.metadata.isHighValue,
-          isRateContract: tenderData.metadata?.isRateContract || existingTender.metadata.isRateContract,
-          isGlobalTendering: tenderData.metadata?.isGlobalTendering || existingTender.metadata.isGlobalTendering,
-          bidDownloadUrl: tenderData.metadata?.bidDownloadUrl || existingTender.metadata.bidDownloadUrl || undefined,
-        },
-        lastSyncedAt: new Date(),
-        isActive: true,
-      };
+    const outcome = await this.executeBulk(ops, toWrite);
+    run.counters.tendersInserted += outcome.inserted;
+    run.counters.tendersUpdated += outcome.updated;
+    run.counters.tendersUnchanged += outcome.matchedUnchanged;
+    run.counters.dbWriteFailures += outcome.failed;
+    outcome.errors.forEach((e) => { if (run.errorSamples.length < 10) run.errorSamples.push(e); });
 
-      await LiveTender.findByIdAndUpdate(existingTender._id, updates);
-      return { updated: true, inserted: false };
-    } else {
-      const newTender = {
-        tenderNumber: tenderData.tenderNumber,
-        title: tenderData.title,
-        description: tenderData.description || 'No description available',
-        category: tenderData.category || 'goods',
-        status: 'published',
-        visibility: 'public',
-        budget: tenderData.budget || {},
-        submissionDeadline: tenderData.submissionDeadline,
-        openingDate: tenderData.openingDate,
-        issuingOrganization: tenderData.issuingOrganization,
-        location: tenderData.location,
-        department: tenderData.department,
-        tenderType: 'government',
-        tags: this.generateTags(tenderData),
-        metadata: {
-          source: tenderData.metadata?.source || sourcePortal,
-          originalUrl: tenderData.originalUrl,
-          gemBidId: tenderData.metadata?.gemBidId,
-          state: tenderData.metadata?.state,
-          ministry: tenderData.metadata?.ministry,
-          city: tenderData.metadata?.city,
-          corrigendumCount: 0,
-          boqUrl: tenderData.metadata?.boqUrl,
-          corrigendumUrl: tenderData.metadata?.corrigendumUrl,
-          tenderPdfUrl: tenderData.metadata?.tenderPdfUrl,
-          productCategory: tenderData.metadata?.productCategory,
-          bidType: tenderData.metadata?.bidType,
-          isHighValue: tenderData.metadata?.isHighValue,
-          isRateContract: tenderData.metadata?.isRateContract,
-          isGlobalTendering: tenderData.metadata?.isGlobalTendering,
-          bidDownloadUrl: tenderData.metadata?.bidDownloadUrl,
-        },
-        documents: tenderData.documents || [],
-        contactInfo: tenderData.contactInfo || {},
-        sourcePortal,
-        lastSyncedAt: new Date(),
-        isActive: true,
-      };
-
-      await LiveTender.create(newTender);
-      return { inserted: true, updated: false };
+    if (unchanged.length) {
+      // Native driver call: no `updatedAt` bump for records whose content did not change.
+      await LiveTender.collection.updateMany(
+        { tenderNumber: { $in: unchanged.map((t) => t.tenderNumber) } },
+        { $set: { lastSeenAt: now, lastSyncedAt: now } }
+      );
+      run.counters.tendersUnchanged += unchanged.length;
     }
+
+    batch.attempted = ops.length;
+    batch.failed = outcome.failed;
+    return batch;
   }
 
-  async markExpiredTenders() {
-    const now = new Date();
+  /** Backwards compatible wrapper (old name/shape). */
+  async bulkUpsertTenders(tenders) {
+    const run = { seen: new Set(), counters: freshCounters(), errorSamples: [] };
+    await this.persistBatch(tenders, run);
+    const c = run.counters;
+    return { inserted: c.tendersInserted, updated: c.tendersUpdated, skipped: c.tendersUnchanged + c.duplicatesSkipped, failed: c.dbWriteFailures };
+  }
+
+  // ─── archive / reconcile ────────────────────────────────────────────────────
+  /** Bids whose deadline passed are archived (never deleted). */
+  async markExpiredTenders(now = new Date()) {
     const result = await LiveTender.updateMany(
-      {
-        submissionDeadline: { $lt: now },
-        isActive: true,
-        status: { $in: ['published', 'open'] },
-      },
-      {
-        $set: {
-          status: 'closed',
-          isActive: false,
-        },
-      }
+      { sourcePortal: SOURCE_PORTALS.GEM, isActive: true, submissionDeadline: { $lt: now } },
+      { $set: { status: 'closed', isActive: false, isArchived: true, archivedAt: now, archiveReason: ARCHIVE_REASON.DEADLINE_PASSED } }
     );
-    
-    logger.info(`Marked ${result.modifiedCount} expired tenders as closed`);
+    logger.info(`Archived ${result.modifiedCount} GeM tenders whose deadline passed`);
     return result.modifiedCount;
   }
 
   /**
-   * Marks as removed/inactive the previously-synced GeM tenders that GeM no
-   * longer reports in a COMPLETE crawl. This keeps the live feed in sync with
-   * the real GeM portal (bids can be withdrawn, merged or end).
-   *
-   * Safety: callers must invoke this ONLY after a full crawl reached GeM's
-   * final page. Records that have no gemBidId are never touched here.
-   *
-   * @param {Array<object>} tenders The tenders present in the current crawl.
-   * @returns {Promise<number>} Number of records marked removed.
+   * Archives GeM tenders that a COMPLETE crawl no longer saw. Callers must only
+   * invoke this after a verified-complete crawl. "Seen" = lastSeenAt >= syncStart.
    */
-  async markRemovedTenders(tenders) {
-    const presentBidIds = tenders
-      .map((tender) => tender.metadata && tender.metadata.gemBidId)
-      .filter((id) => typeof id === 'string' && id.length > 0);
-
-    if (presentBidIds.length === 0) {
-      logger.warn('markRemovedTenders: no gemBidId values present in crawl, skipping reconciliation');
-      return 0;
-    }
-
+  async markRemovedTenders(syncStart, now = new Date()) {
     const result = await LiveTender.updateMany(
       {
         sourcePortal: SOURCE_PORTALS.GEM,
         isActive: true,
-        'metadata.gemBidId': { $nin: presentBidIds },
+        $or: [{ lastSeenAt: { $lt: syncStart } }, { lastSeenAt: { $exists: false } }],
       },
-      {
-        $set: {
-          status: 'closed',
-          isActive: false,
-          lastSyncedAt: new Date(),
-        },
-      }
+      { $set: { status: 'closed', isActive: false, isArchived: true, archivedAt: now, archiveReason: ARCHIVE_REASON.NOT_LISTED_ON_GEM } }
     );
-
-    logger.info(`Marked ${result.modifiedCount} GeM tenders as removed (no longer on GeM portal)`);
+    logger.info(`Archived ${result.modifiedCount} GeM tenders no longer listed on GeM`);
     return result.modifiedCount;
   }
 
-  generateTags(tenderData) {
-    const tags = new Set();
-    
-    if (tenderData.category) tags.add(tenderData.category.toLowerCase());
-    if (tenderData.state) tags.add(tenderData.state.toLowerCase());
-    if (tenderData.department) {
-      tenderData.department.toLowerCase().split(/\s+/).forEach(word => {
-        if (word.length > 3) tags.add(word);
-      });
+  // ─── the synchronization ────────────────────────────────────────────────────
+  async synchronizeTenders({ trigger = 'manual' } = {}) {
+    if (this.syncStats.isSyncing) {
+      logger.warn('Sync already in progress, skipping...');
+      return { success: false, message: 'Sync already in progress', stats: this.syncStats };
     }
-    if (tenderData.title) {
-      const keywords = ['construction', 'supply', 'service', 'work', 'maintenance', 'repair', 'installation'];
-      keywords.forEach(keyword => {
-        if (tenderData.title.toLowerCase().includes(keyword)) {
-          tags.add(keyword);
+
+    const startedAt = new Date();
+    this.syncStats.isSyncing = true;
+    this.syncStats.lastSyncStatus = 'in_progress';
+
+    const run = { seen: new Set(), counters: freshCounters(), errorSamples: [] };
+    let runDoc = null;
+    let report = null;
+    let fatal = null;
+    let archivedExpired = 0;
+    let archivedRemoved = 0;
+    let verifiedPersisted = 0;
+    let complete = false;
+
+    try {
+      await this.waitForConnection();
+      try {
+        runDoc = await GemSyncRun.create({ type: 'tenders', trigger, status: 'running', startedAt });
+        this.syncStats.lastRunId = String(runDoc._id);
+      } catch (e) {
+        logger.error(`Could not create sync run record: ${e.message}`);
+      }
+      logger.info(`GeM tender synchronization started (${trigger})`);
+
+      let buffer = [];
+      let consecutiveFlushFailures = 0;
+      const flush = async () => {
+        if (buffer.length === 0) return;
+        const chunk = buffer;
+        buffer = [];
+        try {
+          const batch = await this.persistBatch(chunk, run);
+          consecutiveFlushFailures = batch.attempted > 0 && batch.failed === batch.attempted ? consecutiveFlushFailures + 1 : 0;
+        } catch (error) {
+          run.counters.dbWriteFailures += chunk.length;
+          if (run.errorSamples.length < 10) run.errorSamples.push(`persist batch failed: ${error.message}`);
+          logger.error(`Persisting GeM batch failed: ${error.message}`);
+          consecutiveFlushFailures += 1;
         }
+        if (consecutiveFlushFailures >= MAX_CONSECUTIVE_FLUSH_FAILURES) {
+          const err = new Error(`Database writes are failing (${consecutiveFlushFailures} consecutive batches); aborting crawl`);
+          err.abortCrawl = true;
+          throw err;
+        }
+      };
+
+      report = await gemScraperService.crawl({
+        onPage: async ({ tenders }) => {
+          buffer.push(...tenders);
+          if (buffer.length >= FLUSH_SIZE) await flush();
+        },
       });
+      await flush().catch((e) => { if (!e.abortCrawl) throw e; report.aborted = true; report.abortReason = e.message; });
+
+      run.counters.tendersExtracted = report.extracted;
+      run.counters.tendersValidated = report.validated;
+      run.counters.tendersRejected = report.rejected;
+
+      archivedExpired = await this.markExpiredTenders();
+
+      // Independent proof that the records are really in MongoDB.
+      verifiedPersisted = await LiveTender.countDocuments({ sourcePortal: SOURCE_PORTALS.GEM, lastSeenAt: { $gte: startedAt } });
+      const expectedPersisted = run.counters.tendersInserted + run.counters.tendersUpdated + run.counters.tendersUnchanged;
+      if (verifiedPersisted < expectedPersisted) {
+        run.errorSamples.push(`persistence verification mismatch: reported ${expectedPersisted}, found ${verifiedPersisted}`);
+        logger.error(`Persistence verification mismatch: reported ${expectedPersisted}, found ${verifiedPersisted} in MongoDB`);
+      }
+
+      const coverage = report.numFound > 0 ? report.extracted / report.numFound : 0;
+      complete =
+        report.reachedFinalPage &&
+        !report.aborted &&
+        report.pagesFailed === 0 &&
+        run.counters.dbWriteFailures === 0 &&
+        verifiedPersisted >= expectedPersisted &&
+        coverage >= MIN_COVERAGE_FOR_RECONCILIATION;
+
+      if (complete) {
+        archivedRemoved = await this.markRemovedTenders(startedAt);
+      } else {
+        logger.warn('GeM crawl was not verified complete - skipping "no longer on GeM" archiving to protect live data', {
+          reachedFinalPage: report.reachedFinalPage, aborted: report.aborted, pagesFailed: report.pagesFailed,
+          dbWriteFailures: run.counters.dbWriteFailures, coverage: Number(coverage.toFixed(3)),
+        });
+      }
+      run.counters.tendersArchived = archivedExpired + archivedRemoved;
+    } catch (error) {
+      fatal = error;
+      logger.error(`Tender synchronization failed: ${error.message}`);
     }
-    
-    return Array.from(tags);
+
+    const finishedAt = new Date();
+    const c = run.counters;
+    const persistedAnything = c.tendersInserted + c.tendersUpdated + c.tendersUnchanged > 0;
+    let status;
+    if (fatal && !persistedAnything) status = 'failed';
+    else if (fatal) status = 'partial';
+    else if (complete) status = 'success';
+    else if (!report || (report.extracted === 0 && report.numFound > 0)) status = 'failed';
+    else status = 'partial';
+
+    const summary = {
+      type: 'tenders',
+      trigger,
+      status,
+      startedAt,
+      finishedAt,
+      durationMs: finishedAt - startedAt,
+      gemReportedTotal: report ? report.numFound : 0,
+      pagesDiscovered: report ? report.pagesDiscovered : 0,
+      pagesProcessed: report ? report.pagesProcessed : 0,
+      pagesFailed: report ? report.pagesFailed : 0,
+      reachedFinalPage: report ? report.reachedFinalPage && !report.aborted : false,
+      ...c,
+      verifiedPersisted,
+      rejectionReasons: report ? report.rejectionReasons : {},
+      failedPages: report ? report.failedPages.slice(0, 50) : [],
+      errorSamples: run.errorSamples,
+      error: fatal ? fatal.message : (report && report.abortReason) || undefined,
+    };
+
+    if (runDoc) {
+      try { await GemSyncRun.updateOne({ _id: runDoc._id }, { $set: summary }); } catch (e) { logger.error(`Could not save sync run: ${e.message}`); }
+    }
+
+    this.syncStats = {
+      ...this.syncStats,
+      isSyncing: false,
+      lastSyncAt: finishedAt,
+      lastSyncStatus: status,
+      gemReportedTotal: summary.gemReportedTotal,
+      pagesDiscovered: summary.pagesDiscovered,
+      pagesProcessed: summary.pagesProcessed,
+      pagesExpected: summary.pagesDiscovered,
+      pagesFailed: summary.pagesFailed,
+      reachedFinalPage: summary.reachedFinalPage,
+      ...c,
+      totalSynced: c.tendersInserted + c.tendersUpdated,
+      totalInserted: c.tendersInserted,
+      totalUpdated: c.tendersUpdated,
+      totalSkipped: c.tendersUnchanged + c.duplicatesSkipped,
+      totalFailed: c.dbWriteFailures,
+      totalExpired: archivedExpired,
+      totalRemoved: archivedRemoved,
+      verifiedPersisted,
+      rejectionReasons: summary.rejectionReasons,
+      syncDuration: summary.durationMs,
+      lastSuccessfulFullSyncAt: status === 'success' ? finishedAt : this.syncStats.lastSuccessfulFullSyncAt,
+      lastError: summary.error || null,
+    };
+
+    logger.info(
+      [
+        '',
+        'GeM Synchronization Summary',
+        '---------------------------',
+        `Status:            ${status}`,
+        `GeM reports:       ${summary.gemReportedTotal} ongoing bids`,
+        `Pages processed:   ${summary.pagesProcessed} / ${summary.pagesDiscovered} (failed: ${summary.pagesFailed})`,
+        `Tenders extracted: ${c.tendersExtracted}`,
+        `Validated:         ${c.tendersValidated}`,
+        `Inserted:          ${c.tendersInserted}`,
+        `Updated:           ${c.tendersUpdated}`,
+        `Unchanged:         ${c.tendersUnchanged}`,
+        `Duplicates skipped:${c.duplicatesSkipped}`,
+        `Rejected:          ${c.tendersRejected} ${JSON.stringify(summary.rejectionReasons)}`,
+        `Archived:          ${c.tendersArchived}`,
+        `Database errors:   ${c.dbWriteFailures}`,
+        `Verified in DB:    ${verifiedPersisted}`,
+        '',
+      ].join('\n')
+    );
+
+    // Category registry follows every tender sync (and can also run on its own).
+    if (status !== 'failed') {
+      try {
+        const categoryService = require('./categoryService');
+        await categoryService.syncCategories({ trigger });
+      } catch (e) {
+        logger.error(`Category synchronization failed: ${e.message}`);
+      }
+    }
+
+    const message =
+      status === 'success' ? 'Synchronization completed successfully'
+        : status === 'partial' ? 'Synchronization completed with warnings (see sync log); not all GeM data could be verified'
+          : `Synchronization failed: ${summary.error || 'no tenders could be imported'}`;
+    return { success: status !== 'failed', message, stats: this.syncStats };
   }
 
+  // ─── status / statistics ────────────────────────────────────────────────────
   getSyncStatus() {
     return {
       ...this.syncStats,
-      lastSyncAt: this.syncStats.lastSyncAt?.toISOString(),
+      lastSyncAt: this.syncStats.lastSyncAt ? new Date(this.syncStats.lastSyncAt).toISOString() : null,
+    };
+  }
+
+  /** Dashboard data from the persistent run log (survives restarts). */
+  async getSyncOverview() {
+    const [lastRun, lastSuccess, lastCategoryRun] = await Promise.all([
+      GemSyncRun.findOne({ type: 'tenders' }).sort({ startedAt: -1 }).lean(),
+      GemSyncRun.findOne({ type: 'tenders', status: 'success' }).sort({ startedAt: -1 }).lean(),
+      GemSyncRun.findOne({ type: 'categories' }).sort({ startedAt: -1 }).lean(),
+    ]);
+    return {
+      sync: this.getSyncStatus(),
+      lastRun,
+      lastSuccessfulRun: lastSuccess,
+      categorySync: lastCategoryRun,
     };
   }
 
   async getStatistics() {
-    const gemFilter = { sourcePortal: SOURCE_PORTALS.GEM };
-    const total = await LiveTender.countDocuments(gemFilter);
-    const active = await LiveTender.countDocuments({ ...gemFilter, isActive: true, status: { $in: ['published', 'open'] } });
-    const closed = await LiveTender.countDocuments({ ...gemFilter, status: 'closed' });
-    const cancelled = await LiveTender.countDocuments({ ...gemFilter, status: 'cancelled' });
+    const now = new Date();
+    const gem = { sourcePortal: SOURCE_PORTALS.GEM };
+    const live = liveTenderQuery(now);
 
-    const byCategory = await LiveTender.aggregate([
-      { $match: { ...gemFilter, isActive: true } },
-      { $group: { _id: '$category', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
+    const [total, active, archived, closed, cancelled, byCategory, byState, byDepartment] = await Promise.all([
+      LiveTender.countDocuments(gem),
+      LiveTender.countDocuments(live),
+      LiveTender.countDocuments({ ...gem, $or: [{ isArchived: true }, { isActive: false }] }),
+      LiveTender.countDocuments({ ...gem, status: 'closed' }),
+      LiveTender.countDocuments({ ...gem, status: 'cancelled' }),
+      LiveTender.aggregate([{ $match: live }, { $group: { _id: '$category', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 50 }]),
+      LiveTender.aggregate([{ $match: live }, { $group: { _id: '$metadata.state', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 20 }]),
+      LiveTender.aggregate([{ $match: live }, { $group: { _id: '$department', count: { $sum: 1 } } }, { $sort: { count: -1 } }, { $limit: 20 }]),
     ]);
 
-    const byState = await LiveTender.aggregate([
-      { $match: { ...gemFilter, isActive: true } },
-      { $group: { _id: '$metadata.state', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 20 },
-    ]);
-
-    const byDepartment = await LiveTender.aggregate([
-      { $match: { ...gemFilter, isActive: true } },
-      { $group: { _id: '$department', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 20 },
-    ]);
-
+    const toMap = (rows, fallback) => rows.reduce((acc, item) => { acc[item._id || fallback] = item.count; return acc; }, {});
     return {
       total,
       active,
+      archived,
       closed,
       cancelled,
-      byCategory: byCategory.reduce((acc, item) => {
-        acc[item._id] = item.count;
-        return acc;
-      }, {}),
-      byState: byState.reduce((acc, item) => {
-        acc[item._id || 'Unknown'] = item.count;
-        return acc;
-      }, {}),
-      byDepartment: byDepartment.reduce((acc, item) => {
-        acc[item._id || 'Unknown'] = item.count;
-        return acc;
-      }, {}),
+      byCategory: toMap(byCategory, 'Unclassified'),
+      byState: toMap(byState, 'Unknown'),
+      byDepartment: toMap(byDepartment, 'Unknown'),
       syncStatus: this.syncStats,
     };
   }
@@ -556,19 +488,11 @@ class LiveTenderSyncService {
   }
 
   /**
-   * Migration/cleanup: identifies and (optionally) removes legacy tender
-   * records that are not from GeM. Safe to run: by default it only counts
-   * matching records. Pass `apply: true` to actually delete them.
-   *
-   * Legacy records match when:
-   *  - sourcePortal is not "GEM", OR
-   *  - metadata.cpppId exists (i.e. the tender was sourced from CPPP).
-   *
-   * GeM records (sourcePortal === "GEM") are never touched.
+   * Migration/cleanup for legacy non-GeM records. Dry-run by default; GeM
+   * records are never touched.
    */
   async cleanupNonGemTenders({ apply = false } = {}) {
     await this.waitForConnection();
-
     const legacyQuery = {
       $or: [
         { sourcePortal: { $ne: SOURCE_PORTALS.GEM } },
@@ -576,15 +500,12 @@ class LiveTenderSyncService {
         { 'metadata.cpppId': { $exists: true } },
       ],
     };
-
     const legacyCount = await LiveTender.countDocuments(legacyQuery);
     const gemCount = await LiveTender.countDocuments({ sourcePortal: SOURCE_PORTALS.GEM });
-
     if (!apply) {
       logger.info(`Cleanup dry-run: ${legacyCount} legacy non-GeM tender record(s) found; ${gemCount} GeM record(s) kept.`);
       return { success: true, dryRun: true, legacyCount, gemCount };
     }
-
     const { deletedCount } = await LiveTender.deleteMany(legacyQuery);
     logger.info(`Cleanup applied: removed ${deletedCount} legacy non-GeM tender record(s); kept ${gemCount} GeM record(s)`);
     return { success: true, dryRun: false, deletedCount, gemCount };

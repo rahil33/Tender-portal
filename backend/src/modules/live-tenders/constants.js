@@ -43,6 +43,32 @@ const CATEGORY = {
 
 const CATEGORY_VALUES = Object.values(CATEGORY);
 
+const CLASSIFICATION = {
+  PRODUCT: 'product',
+  SERVICE: 'service',
+  UNCLASSIFIED: 'unclassified',
+};
+
+const UNCLASSIFIED_CATEGORY = { key: 'unclassified', name: 'Unclassified' };
+
+// Bid-type codes as used by GeM's own listing (b_bid_type). Labels are display
+// names only; filters are built from the codes actually present in the data.
+const BID_TYPE_LABELS = {
+  1: 'Product Bid/RA',
+  2: 'Service Bid/RA',
+  3: 'Bid To RA',
+  4: 'BOQ Bid',
+  5: 'Product Custom Bid/RA',
+  6: 'Rate Contract Bid',
+};
+
+const ARCHIVE_REASON = {
+  DEADLINE_PASSED: 'deadline_passed',
+  NOT_LISTED_ON_GEM: 'not_listed_on_gem',
+};
+
+const SYNC_TYPE = { TENDERS: 'tenders', CATEGORIES: 'categories' };
+
 const SYNC_STATUS = {
   IDLE: 'idle',
   IN_PROGRESS: 'in_progress',
@@ -60,6 +86,11 @@ const SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 const SYNC_INTERVAL_FAST_MS = 5 * 60 * 1000; // 5 minutes
 
 module.exports = {
+  CLASSIFICATION,
+  UNCLASSIFIED_CATEGORY,
+  BID_TYPE_LABELS,
+  ARCHIVE_REASON,
+  SYNC_TYPE,
   SOURCE_PORTALS,
   SOURCE_PORTAL_VALUES,
   DOCUMENT_TYPE,

@@ -49,13 +49,16 @@ class TenderSyncScheduler {
         this.isRunning = true;
         logger.info(`Starting GeM tender synchronization (${source})...`);
         
-        const result = await liveTenderSyncService.synchronizeTenders();
+        const result = await liveTenderSyncService.synchronizeTenders({ trigger: source });
         
         if (result.success) {
           logger.info(`GeM tender synchronization completed (${source})`, {
-            synced: result.stats?.totalSynced,
-            updated: result.stats?.totalUpdated,
-            failed: result.stats?.totalFailed,
+            status: result.stats?.lastSyncStatus,
+            inserted: result.stats?.tendersInserted,
+            updated: result.stats?.tendersUpdated,
+            unchanged: result.stats?.tendersUnchanged,
+            rejected: result.stats?.tendersRejected,
+            dbFailures: result.stats?.dbWriteFailures,
             duration: result.stats?.syncDuration,
           });
         } else {

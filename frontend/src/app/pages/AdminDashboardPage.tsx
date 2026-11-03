@@ -51,6 +51,25 @@ interface GeMSyncStatus {
   syncDuration?: number;
   lastSuccessfulFullSyncAt?: string;
   lastError?: string | null;
+  tendersExtracted?: number;
+  tendersValidated?: number;
+  tendersRejected?: number;
+  duplicatesSkipped?: number;
+  tendersInserted?: number;
+  tendersUpdated?: number;
+  tendersUnchanged?: number;
+  tendersArchived?: number;
+  dbWriteFailures?: number;
+  pagesFailed?: number;
+  verifiedPersisted?: number;
+  rejectionReasons?: Record<string, number>;
+}
+
+interface GeMSyncOverview {
+  lastRun?: any;
+  lastSuccessfulRun?: any;
+  categorySync?: { status: string; finishedAt?: string; startedAt?: string; categoriesTotal?: number; error?: string } | null;
+  statistics?: { total: number; active: number; archived: number };
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
@@ -63,7 +82,9 @@ export default function AdminDashboardPage() {
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [syncStatus, setSyncStatus] = useState<GeMSyncStatus | null>(null);
+  const [syncOverview, setSyncOverview] = useState<GeMSyncOverview | null>(null);
   const [syncingNow, setSyncingNow] = useState(false);
+  const [syncingCategories, setSyncingCategories] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -78,7 +99,41 @@ export default function AdminDashboardPage() {
       const syncRes = await api.get('/live-tenders/sync-status');
       const syncData = syncRes.data;
       if (syncData.success && syncData.data) {
-        setSyncStatus(syncData.data.sync ?? null);
+        // In-memory status is empty after a server restart: fall back to the
+        // persisted run log so the dashboard always reflects real sync history.
+        const memory = syncData.data.sync ?? null;
+        const run = syncData.data.lastRun;
+        const fromRun: GeMSyncStatus | null = run ? {
+          lastSyncAt: run.finishedAt || run.startedAt,
+          lastSyncStatus: run.status,
+          gemReportedTotal: run.gemReportedTotal,
+          pagesProcessed: run.pagesProcessed,
+          pagesExpected: run.pagesDiscovered,
+          pagesFailed: run.pagesFailed,
+          reachedFinalPage: run.reachedFinalPage,
+          tendersExtracted: run.tendersExtracted,
+          tendersValidated: run.tendersValidated,
+          tendersRejected: run.tendersRejected,
+          duplicatesSkipped: run.duplicatesSkipped,
+          tendersInserted: run.tendersInserted,
+          tendersUpdated: run.tendersUpdated,
+          tendersUnchanged: run.tendersUnchanged,
+          tendersArchived: run.tendersArchived,
+          dbWriteFailures: run.dbWriteFailures,
+          verifiedPersisted: run.verifiedPersisted,
+          rejectionReasons: run.rejectionReasons,
+          syncDuration: run.durationMs,
+          lastError: run.error || null,
+        } : null;
+        const merged = memory && memory.lastSyncAt ? memory : { ...(memory ?? {}), ...(fromRun ?? {}) };
+        merged.lastSuccessfulFullSyncAt = syncData.data.lastSuccessfulRun?.finishedAt || merged.lastSuccessfulFullSyncAt;
+        setSyncStatus(merged);
+        setSyncOverview({
+          lastRun: run,
+          lastSuccessfulRun: syncData.data.lastSuccessfulRun,
+          categorySync: syncData.data.categorySync,
+          statistics: syncData.data.statistics,
+        });
       }
     } catch (err) {
       console.error('Failed to fetch GeM sync status:', err);
@@ -123,6 +178,20 @@ export default function AdminDashboardPage() {
       showError('Failed to load dashboard data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runCategorySync = async () => {
+    if (syncingCategories) return;
+    setSyncingCategories(true);
+    try {
+      const res = await api.post('/live-tenders/categories/sync');
+      if (res.data?.success) showSuccess('Category sync completed', 'GeM categories refreshed from stored bids');
+      await fetchGeMSync();
+    } catch (err: any) {
+      showError(err.response?.data?.message || err.message || 'Category sync failed');
+    } finally {
+      setSyncingCategories(false);
     }
   };
 
@@ -276,30 +345,48 @@ export default function AdminDashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Latest synchronization run</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
+              {[
+                { label: 'Pages processed', value: <>{syncStatus?.pagesProcessed ?? 0}<span className="text-sm text-gray-400 font-medium"> / {syncStatus?.pagesExpected ?? 0}</span></> },
+                { label: 'Tenders extracted', value: (syncStatus?.tendersExtracted ?? 0).toLocaleString() },
+                { label: 'New inserted', value: (syncStatus?.tendersInserted ?? 0).toLocaleString() },
+                { label: 'Existing updated', value: (syncStatus?.tendersUpdated ?? 0).toLocaleString() },
+                { label: 'Unchanged', value: (syncStatus?.tendersUnchanged ?? 0).toLocaleString() },
+                { label: 'Rejected', value: (syncStatus?.tendersRejected ?? 0).toLocaleString() },
+                { label: 'Archived', value: (syncStatus?.tendersArchived ?? 0).toLocaleString() },
+              ].map((tile) => (
+                <div key={tile.label} className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="text-2xl font-bold text-gray-900">{tile.value}</div>
+                  <div className="text-xs text-gray-500 font-medium">{tile.label}</div>
+                </div>
+              ))}
+              <div className={`p-4 rounded-xl border ${(syncStatus?.dbWriteFailures ?? 0) > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100'}`}>
+                <div className={`text-2xl font-bold ${(syncStatus?.dbWriteFailures ?? 0) > 0 ? 'text-red-600' : 'text-gray-900'}`}>{syncStatus?.dbWriteFailures ?? 0}</div>
+                <div className="text-xs text-gray-500 font-medium">Database errors</div>
+              </div>
+            </div>
+
+            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">In the database</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
                 <div className="text-2xl font-bold text-gray-900">{syncStatus?.gemReportedTotal?.toLocaleString() ?? 'N/A'}</div>
-                <div className="text-xs text-gray-500 font-medium">GeM Ongoing Bids</div>
+                <div className="text-xs text-gray-500 font-medium">GeM reports ongoing</div>
               </div>
               <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="text-2xl font-bold text-gray-900">{syncStatus?.pagesProcessed ?? 0}<span className="text-sm text-gray-400 font-medium"> / {syncStatus?.pagesExpected ?? 0}</span></div>
-                <div className="text-xs text-gray-500 font-medium">Pages Processed</div>
+                <div className="text-2xl font-bold text-gray-900">{syncOverview?.statistics?.active?.toLocaleString() ?? 'N/A'}</div>
+                <div className="text-xs text-gray-500 font-medium">Active GeM tenders</div>
               </div>
               <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="text-2xl font-bold text-gray-900">{syncStatus?.totalInserted ?? 0}</div>
-                <div className="text-xs text-gray-500 font-medium">Inserted</div>
+                <div className="text-2xl font-bold text-gray-900">{syncOverview?.statistics?.archived?.toLocaleString() ?? 'N/A'}</div>
+                <div className="text-xs text-gray-500 font-medium">Archived tenders</div>
               </div>
               <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="text-2xl font-bold text-gray-900">{syncStatus?.totalUpdated ?? 0}</div>
-                <div className="text-xs text-gray-500 font-medium">Updated</div>
-              </div>
-              <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="text-2xl font-bold text-gray-900">{syncStatus?.totalExpired ?? 0} / {syncStatus?.totalRemoved ?? 0}</div>
-                <div className="text-xs text-gray-500 font-medium">Expired / Removed</div>
-              </div>
-              <div className="p-4 rounded-xl bg-red-50 border border-red-100">
-                <div className="text-2xl font-bold text-red-600">{syncStatus?.totalFailed ?? 0}</div>
-                <div className="text-xs text-red-700 font-medium">Failed</div>
+                <div className="text-lg font-bold text-gray-900 capitalize">{syncOverview?.categorySync?.status ?? 'never run'}</div>
+                <div className="text-xs text-gray-500 font-medium">
+                  Category sync{syncOverview?.categorySync?.finishedAt ? ` · ${formatDate(syncOverview.categorySync.finishedAt)}` : ''}
+                  {syncOverview?.categorySync?.categoriesTotal !== undefined ? ` · ${syncOverview.categorySync.categoriesTotal} categories` : ''}
+                </div>
               </div>
             </div>
 
@@ -320,8 +407,16 @@ export default function AdminDashboardPage() {
               <span>Last sync: <strong>{formatDate(syncStatus?.lastSyncAt)}</strong></span>
               <span>Duration: <strong>{formatDuration(syncStatus?.syncDuration)}</strong></span>
               <span>Final page reached: <strong>{syncStatus?.reachedFinalPage ? 'Yes' : 'No'}</strong></span>
-              <span>Last full sync: <strong>{formatDate(syncStatus?.lastSuccessfulFullSyncAt)}</strong></span>
+              <span>Last successful sync: <strong>{formatDate(syncStatus?.lastSuccessfulFullSyncAt)}</strong></span>
+              <span>Failed pages: <strong>{syncStatus?.pagesFailed ?? 0}</strong></span>
+              <span>Verified in DB: <strong>{(syncStatus?.verifiedPersisted ?? 0).toLocaleString()}</strong></span>
             </div>
+
+            {syncStatus?.rejectionReasons && Object.keys(syncStatus.rejectionReasons).length > 0 && (
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 mb-4">
+                Rejected records by reason: {Object.entries(syncStatus.rejectionReasons).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ')}
+              </div>
+            )}
 
             {syncStatus?.lastError && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 mb-4">
@@ -329,10 +424,14 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Button variant="outline" onClick={runManualSync} disabled={syncingNow || !!syncStatus?.isSyncing}>
                 {syncingNow || syncStatus?.isSyncing ? <Loader2 size={16} className="mr-2 animate-spin" /> : <RefreshCw size={16} className="mr-2" />}
                 {syncingNow || syncStatus?.isSyncing ? 'Syncing...' : 'Run GeM Sync Now'}
+              </Button>
+              <Button variant="outline" onClick={runCategorySync} disabled={syncingCategories}>
+                {syncingCategories ? <Loader2 size={16} className="mr-2 animate-spin" /> : <RefreshCw size={16} className="mr-2" />}
+                Sync Categories
               </Button>
               <Button variant="outline" onClick={fetchGeMSync}>Refresh Status</Button>
             </div>

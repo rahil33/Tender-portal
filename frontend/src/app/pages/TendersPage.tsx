@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { liveTenderService, LiveTender } from '../../services/liveTenderService';
+import { liveTenderService, LiveTender, LiveTenderFilterOptions } from '../../services/liveTenderService';
 import { Skeleton } from '../../components/Loading';
 import { useNotification } from '../../contexts/NotificationContext';
 import { AuthModal } from '../components/AuthModal';
@@ -16,20 +16,17 @@ import {
   RefreshCw,
   LogIn,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
 const MAX_VALUE = '5000000000';
 
-const BID_TYPES = [
-  { value: '', label: 'All Bid Types' },
-  { value: '1', label: 'Product Bid/RA' },
-  { value: '2', label: 'Service Bid/RA' },
-  { value: '3', label: 'Bid To RA' },
-  { value: '4', label: 'BOQ Bid' },
-  { value: '5', label: 'Product Custom Bid/RA' },
-  { value: '6', label: 'Rate Contract Bid' },
-];
+const CLASSIFICATION_LABELS: Record<string, string> = {
+  product: 'Product',
+  service: 'Service',
+  unclassified: 'Unclassified',
+};
 
 const formatIST = (dateString?: string) => {
   if (!dateString) return 'N/A';
@@ -58,6 +55,10 @@ export default function TendersPage() {
   const initialCategory = searchParams.get('category') ?? '';
   const initialAuthority = searchParams.get('authority') ?? '';
   const initialBidType = searchParams.get('bidType') ?? '';
+  const initialClassification = searchParams.get('classification') ?? '';
+  const initialStatus = searchParams.get('status') ?? '';
+  const initialPublishedFrom = searchParams.get('publishedFrom') ?? '';
+  const initialPublishedTo = searchParams.get('publishedTo') ?? '';
   const initialMinValue = searchParams.get('minValue') ?? '';
   const initialMaxValue = searchParams.get('maxValue') ?? '';
   const initialDeadlineFrom = searchParams.get('deadlineFrom') ?? '';
@@ -75,13 +76,18 @@ export default function TendersPage() {
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [selectedAuthority, setSelectedAuthority] = useState(initialAuthority);
   const [selectedBidType, setSelectedBidType] = useState(initialBidType);
+  const [selectedClassification, setSelectedClassification] = useState(initialClassification);
+  const [selectedStatus, setSelectedStatus] = useState(initialStatus);
+  const [publishedFrom, setPublishedFrom] = useState(initialPublishedFrom);
+  const [publishedTo, setPublishedTo] = useState(initialPublishedTo);
+  const [filterOptions, setFilterOptions] = useState<LiveTenderFilterOptions | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [minValue, setMinValue] = useState(initialMinValue);
   const [maxValue, setMaxValue] = useState(initialMaxValue);
   const [deadlineFrom, setDeadlineFrom] = useState(initialDeadlineFrom);
   const [deadlineTo, setDeadlineTo] = useState(initialDeadlineTo);
   const [states, setStates] = useState<string[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
-  const [categories, setCategories] = useState<string[]>([]);
   const [authorities, setAuthorities] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -101,6 +107,14 @@ export default function TendersPage() {
     else params.delete('authority');
     if (selectedBidType) params.set('bidType', selectedBidType);
     else params.delete('bidType');
+    if (selectedClassification) params.set('classification', selectedClassification);
+    else params.delete('classification');
+    if (selectedStatus) params.set('status', selectedStatus);
+    else params.delete('status');
+    if (publishedFrom) params.set('publishedFrom', publishedFrom);
+    else params.delete('publishedFrom');
+    if (publishedTo) params.set('publishedTo', publishedTo);
+    else params.delete('publishedTo');
     if (minValue) params.set('minValue', minValue);
     else params.delete('minValue');
     if (maxValue) params.set('maxValue', maxValue);
@@ -113,17 +127,18 @@ export default function TendersPage() {
     else params.delete('page');
     setSearchParams(params, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submittedSearch, selectedState, selectedCategory, selectedAuthority, selectedBidType, minValue, maxValue, deadlineFrom, deadlineTo, page]);
+  }, [submittedSearch, selectedState, selectedCategory, selectedAuthority, selectedBidType, selectedClassification, selectedStatus, publishedFrom, publishedTo, minValue, maxValue, deadlineFrom, deadlineTo, page]);
 
   const fetchOptionLists = async () => {
     try {
-      const stateRes = await liveTenderService.getStates();
-      const authRes = await liveTenderService.getAuthorities();
-      const catRes = await liveTenderService.getCategories();
-      setStates(Array.isArray(stateRes) ? stateRes : stateRes?.states ?? []);
-      setCounts(stateRes.counts ?? {});
-      setAuthorities(Array.isArray(authRes) ? authRes : authRes?.data ?? []);
-      setCategories(Array.isArray(catRes) ? catRes : []);
+      const [options, authRes] = await Promise.all([
+        liveTenderService.getFilters(),
+        liveTenderService.getAuthorities(),
+      ]);
+      setFilterOptions(options);
+      setStates(options.states.map((st) => st.value));
+      setCounts(Object.fromEntries(options.states.map((st) => [st.value, st.count])));
+      setAuthorities(Array.isArray(authRes) ? authRes : []);
     } catch (error) {
       console.error('Failed to fetch option lists:', error);
     }
@@ -131,6 +146,7 @@ export default function TendersPage() {
 
   const fetchTenders = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await liveTenderService.getLiveTenders({
         page,
@@ -140,6 +156,10 @@ export default function TendersPage() {
         category: selectedCategory || undefined,
         authority: selectedAuthority || undefined,
         bidType: selectedBidType || undefined,
+        classification: (selectedClassification || undefined) as any,
+        status: (selectedStatus || undefined) as any,
+        publishedFrom: publishedFrom || undefined,
+        publishedTo: publishedTo || undefined,
         minValue: minValue ? Number(minValue) : undefined,
         maxValue: maxValue ? Number(maxValue) : undefined,
         deadlineFrom: deadlineFrom || undefined,
@@ -162,16 +182,16 @@ export default function TendersPage() {
         setTotalPages(1);
         return;
       }
-      showError(
-        err.response?.data?.message || err.message || 'Failed to load live tenders'
-      );
+      const message = err.response?.data?.message || err.message || 'Failed to load live tenders';
+      setLoadError(message);
+      showError(message);
       setTenders([]);
       setTotal(0);
       setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [page, submittedSearch, selectedState, selectedCategory, selectedAuthority, selectedBidType, minValue, maxValue, deadlineFrom, deadlineTo, showError]);
+  }, [page, submittedSearch, selectedState, selectedCategory, selectedAuthority, selectedBidType, selectedClassification, selectedStatus, publishedFrom, publishedTo, minValue, maxValue, deadlineFrom, deadlineTo, showError]);
 
   // Fetch only when authenticated. On logout/session expiry, the login gate
   // renders and previously fetched data is cleared by the 401 handler above.
@@ -196,12 +216,24 @@ export default function TendersPage() {
     setSelectedState('');
     setSelectedAuthority('');
     setSelectedBidType('');
+    setSelectedClassification('');
+    setSelectedStatus('');
+    setPublishedFrom('');
+    setPublishedTo('');
     setMinValue('');
     setMaxValue('');
     setDeadlineFrom('');
     setDeadlineTo('');
     setPage(1);
   };
+
+  const hasActiveFilters = Boolean(
+    submittedSearch || selectedState || selectedCategory || selectedAuthority || selectedBidType ||
+    selectedClassification || selectedStatus || publishedFrom || publishedTo || minValue || maxValue ||
+    deadlineFrom || deadlineTo
+  );
+  const lastSync = filterOptions?.meta.lastSync ?? null;
+  const lastSuccessfulSyncAt = filterOptions?.meta.lastSuccessfulSyncAt ?? null;
 
   // ---- Auth gate ----------------------------------------------------------
   if (isLoading) {
@@ -262,6 +294,18 @@ export default function TendersPage() {
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
               Source: Government e-Marketplace (GeM)
             </p>
+            {filterOptions && (
+              <p className="text-xs text-gray-500 mt-1" data-testid="last-sync">
+                {lastSuccessfulSyncAt
+                  ? `Last synchronized: ${formatIST(lastSuccessfulSyncAt)} IST`
+                  : 'Last synchronized: never (no completed synchronization yet)'}
+                {lastSync && lastSync.status !== 'success' && (
+                  <span className={`ml-2 font-semibold ${lastSync.status === 'failed' ? 'text-red-600' : 'text-amber-600'}`}>
+                    {lastSync.status === 'running' ? 'Sync in progress' : `Latest sync ${lastSync.status}`}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <button
             onClick={fetchTenders}
@@ -338,10 +382,23 @@ export default function TendersPage() {
                 value={selectedCategory}
                 onChange={(e) => { setSelectedCategory(e.target.value); resetPage(); }}
                 className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
+                aria-label="GeM category"
               >
-                <option value="">All Categories</option>
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                <option value="">All GeM Categories</option>
+                {(filterOptions?.categories ?? []).map((cat) => (
+                  <option key={cat.key} value={cat.key}>{cat.name} ({cat.count})</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedClassification}
+                onChange={(e) => { setSelectedClassification(e.target.value); resetPage(); }}
+                className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
+                aria-label="Product or service"
+              >
+                <option value="">Product &amp; Service</option>
+                {(filterOptions?.classifications ?? []).map((c) => (
+                  <option key={c.value} value={c.value}>{CLASSIFICATION_LABELS[c.value] ?? c.value} ({c.count})</option>
                 ))}
               </select>
 
@@ -360,11 +417,45 @@ export default function TendersPage() {
                 value={selectedBidType}
                 onChange={(e) => { setSelectedBidType(e.target.value); resetPage(); }}
                 className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
+                aria-label="Bid type"
               >
-                {BID_TYPES.map((bt) => (
-                  <option key={bt.value} value={bt.value}>{bt.label}</option>
+                <option value="">All Bid Types</option>
+                {(filterOptions?.bidTypes ?? []).map((bt) => (
+                  <option key={bt.value} value={String(bt.value)}>{bt.label} ({bt.count})</option>
                 ))}
               </select>
+
+              <select
+                value={selectedStatus}
+                onChange={(e) => { setSelectedStatus(e.target.value); resetPage(); }}
+                className="p-3 rounded-[12px] focus:outline-none focus:ring-2 bg-white text-[#111827] border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20 cursor-pointer appearance-none"
+                aria-label="Tender status"
+              >
+                <option value="">All Statuses</option>
+                {(filterOptions?.statuses ?? []).map((st) => (
+                  <option key={st.value} value={st.value}>{st.value.charAt(0).toUpperCase() + st.value.slice(1)} ({st.count})</option>
+                ))}
+              </select>
+
+              <div className="relative">
+                <input
+                  type="date"
+                  value={publishedFrom}
+                  onChange={(e) => { setPublishedFrom(e.target.value); resetPage(); }}
+                  className="w-full p-3 rounded-[12px] text-[#111827] focus:outline-none focus:ring-2 bg-white border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20"
+                />
+                <span className="absolute -top-2 left-3 px-1 text-[10px] font-bold uppercase tracking-wider bg-white text-gray-500">Published from</span>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="date"
+                  value={publishedTo}
+                  onChange={(e) => { setPublishedTo(e.target.value); resetPage(); }}
+                  className="w-full p-3 rounded-[12px] text-[#111827] focus:outline-none focus:ring-2 bg-white border border-gray-200 transition-all hover:border-gray-300 focus:border-[#16A34A] focus:ring-[#16A34A]/20"
+                />
+                <span className="absolute -top-2 left-3 px-1 text-[10px] font-bold uppercase tracking-wider bg-white text-gray-500">Published to</span>
+              </div>
 
               <div className="relative">
                 <input
@@ -430,19 +521,53 @@ export default function TendersPage() {
               </div>
             ))}
           </div>
+        ) : loadError ? (
+          <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-red-100" role="alert">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={32} className="text-red-500" />
+            </div>
+            <p className="text-gray-900 text-lg font-semibold mb-2">Could not load tenders</p>
+            <p className="text-gray-500 text-sm mb-4">{loadError}</p>
+            <button
+              onClick={fetchTenders}
+              className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              Try again
+            </button>
+          </div>
         ) : tenders.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl shadow-sm">
+          <div className="text-center py-12 bg-white rounded-xl shadow-sm" data-testid="empty-state">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Filter size={32} className="text-gray-400" />
             </div>
-            <p className="text-gray-500 text-lg mb-2">No live GeM tenders found.</p>
-            <p className="text-gray-400 text-sm mb-4">Try adjusting your search or filters</p>
-            <button
-              onClick={clearFilters}
-              className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              Clear Filters
-            </button>
+            {hasActiveFilters ? (
+              <>
+                <p className="text-gray-500 text-lg mb-2">No live GeM tenders match your search or filters.</p>
+                <p className="text-gray-400 text-sm mb-4">Try adjusting or clearing the filters.</p>
+                <button
+                  onClick={clearFilters}
+                  className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </>
+            ) : filterOptions && !filterOptions.meta.hasImportedAny ? (
+              <>
+                <p className="text-gray-700 text-lg font-semibold mb-2">No tenders have been imported from GeM yet.</p>
+                <p className="text-gray-500 text-sm">
+                  {lastSync?.status === 'running'
+                    ? 'The first synchronization is running now. Tenders appear here as soon as they are saved.'
+                    : lastSync?.status === 'failed'
+                      ? 'The last synchronization failed. An administrator can see the details in the Admin dashboard.'
+                      : 'The scheduled synchronization has not completed yet. Please check back in a few minutes.'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-700 text-lg font-semibold mb-2">There are no live GeM tenders right now.</p>
+                <p className="text-gray-500 text-sm">All imported tenders have closed or been archived. New tenders appear after the next synchronization.</p>
+              </>
+            )}
           </div>
         ) : (
           <>
@@ -476,9 +601,16 @@ export default function TendersPage() {
                         </div>
                         <h3 className="text-xl font-bold text-gray-900 mb-2">{tender.title}</h3>
                       </div>
-                      <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold">
-                        {tender.category}
-                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {tender.categoryInfo?.classification && tender.categoryInfo.classification !== 'unclassified' && (
+                          <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold">
+                            {CLASSIFICATION_LABELS[tender.categoryInfo.classification]}
+                          </span>
+                        )}
+                        <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold">
+                          {tender.category || 'Unclassified'}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
                       <span className="flex items-center gap-1 min-w-0">
@@ -489,6 +621,12 @@ export default function TendersPage() {
                         <MapPin size={14} />
                         {tender.metadata?.state || tender.location}
                       </span>
+                      {tender.openingDate && (
+                        <span className="flex items-center gap-1">
+                          <Calendar size={14} />
+                          Published: {formatIST(tender.openingDate)} IST
+                        </span>
+                      )}
                       <span className="flex items-center gap-1">
                         <Calendar size={14} />
                         Bid Ends: {formatIST(tender.submissionDeadline)} IST

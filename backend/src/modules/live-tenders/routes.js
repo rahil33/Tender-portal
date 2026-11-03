@@ -30,7 +30,11 @@ const handleValidationErrors = (req, res, next) => {
 const liveTenderQueryValidator = [
   query('search').optional().isString().trim().isLength({ min: 0, max: 200 }).withMessage('Search must be a string of at most 200 characters'),
   query('q').optional().isString().trim().isLength({ min: 0, max: 200 }).withMessage('Search must be a string of at most 200 characters'),
-  query('category').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('Category must be a string of at most 100 characters'),
+  query('category').optional().isString().trim().isLength({ min: 0, max: 160 }).withMessage('Category must be a string of at most 160 characters'),
+  query('classification').optional().isIn(['', 'product', 'service', 'unclassified']).withMessage('Classification must be product, service or unclassified'),
+  query('status').optional().isIn(['', 'published', 'open']).withMessage('Invalid status'),
+  query('publishedFrom').optional().custom((v) => v === '' || !isNaN(Date.parse(v))).withMessage('Published from must be a valid date'),
+  query('publishedTo').optional().custom((v) => v === '' || !isNaN(Date.parse(v))).withMessage('Published to must be a valid date'),
   query('location').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('Location must be a string of at most 100 characters'),
   query('state').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('State must be a string of at most 100 characters'),
   query('department').optional().isString().trim().isLength({ min: 0, max: 100 }).withMessage('Department must be a string of at most 100 characters'),
@@ -43,7 +47,7 @@ const liveTenderQueryValidator = [
   query('deadlineTo').optional().custom((v) => v === '' || !isNaN(Date.parse(v))).withMessage('Deadline to must be a valid date'),
   query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
   query('limit').optional().isInt({ min: 1, max: MAX_LIMIT }).withMessage(`Limit must be between 1 and ${MAX_LIMIT}`),
-  query('sortBy').optional().isIn(['createdAt', 'submissionDeadline']).withMessage('Invalid sort field'),
+  query('sortBy').optional().isIn(['createdAt', 'submissionDeadline', 'openingDate']).withMessage('Invalid sort field'),
   query('sortOrder').optional().isIn(['asc', 'desc']).withMessage('Invalid sort order'),
   handleValidationErrors,
 ];
@@ -53,6 +57,7 @@ const liveTenderQueryValidator = [
  * Unauthenticated requests receive 401 and tender data is never exposed.
  */
 router.get('/', protect, liveTenderQueryValidator, liveTenderController.getLiveTenders);
+router.get('/filters', protect, liveTenderController.getFilters);
 router.get('/states', protect, liveTenderController.getStates);
 router.get('/departments', protect, liveTenderController.getDepartments);
 router.get('/categories', protect, liveTenderController.getCategories);
@@ -64,6 +69,7 @@ router.get('/:tenderId', protect, liveTenderController.getTenderById);
 /**
  * Admin Only Routes - Authentication + admin role required
  */
+router.post('/categories/sync', protect, authorize(ROLES.ADMIN), liveTenderController.syncCategories);
 router.post('/manual-sync', protect, authorize(ROLES.ADMIN), liveTenderController.manualSync);
 router.delete('/cache', protect, authorize(ROLES.ADMIN), liveTenderController.clearCache);
 
